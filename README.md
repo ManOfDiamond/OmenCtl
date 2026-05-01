@@ -21,11 +21,35 @@
 
 **New in v1.3.5:**
 
-- 🚀 **Completely Renewed Experience**: OMEN Command Center for Linux was fully renewed in v1.3.5 with a redesigned interface flow, updated page structure, and cleaner cross-page consistency.
-- 📐 **Responsive UI Scaling**: All major pages now adapt to compact, normal, and spacious window sizes for better desktop and small-window usability.
-- 🧭 **Navigation & Header Polish**: Inline page header/back behavior and launcher layout were refined for cleaner page transitions and more consistent navigation.
-- 🌗 **Theme Consistency Improvements**: Light/dark mode readability and dropdown/popover styling were improved for clearer contrast and better visual stability.
-- 🛠️ **Settings Reliability Updates**: Debug info actions and related settings labels were stabilized and aligned with translations.
+### 🛠️ What's New?
+### 🧩 Decoupled Microservices Architecture
+Instead of one large background process, the system now runs 5 independent services, each dedicated to a specific task:
+
+hpm-fan: Intelligent fan control and curve management.
+hpm-rgb: Lighting effects and animation engine.
+hpm-power: Power profiles and energy management.
+hpm-mux: GPU switching logic (prime-select, envycontrol, etc.).
+hpm-platform: System temperatures, battery info, and keyboard fixes.
+This architecture ensures that if one service (e.g., RGB) fails, critical system functions like fan control or MUX switching continue to work uninterrupted.
+
+### ⚡ Maximum Performance & Minimum Resource Usage
+RGB Engine: When using a static color, the engine now enters a deep sleep using Event.wait(), consuming 0% CPU.
+Smart GPU Monitoring: The service now checks the Nvidia GPU's power state (suspended) before polling. It will not force-wake the dGPU, significantly extending battery life.
+Dynamic Backoff: Polling intervals automatically expand when system values remain unchanged, further reducing background overhead.
+### 🎮 GPU TGP 80W Cap Mitigation (HP Omen Max 16)
+The chronic issue in mainline kernels (v7.0+) that caused the GPU power to be capped at 80W on certain Omen models (specifically 8D41) has been fixed. Thanks to a patch provided by xcellsior, the unnecessary firmware writes at probe time are now gated, allowing your GPU to reach its full TGP!
+
+### 🔄 Refined Installation & Update Experience
+Due to the major architectural change, you must use the updater script: sudo ./setup.sh update to transition to this version.
+The installer now prompts you before installing the "Custom DKMS Driver." (Kernel 7.0+ users with working out-of-the-box fan control can safely skip this).
+### ⚠️ Important Update Instructions
+If you are upgrading from an older version, please run the following commands in your terminal to cleanly remove old service artifacts and register the new microservices:
+
+```bash
+cd OmenCommandCenterforLinux
+git pull
+sudo ./setup.sh update
+```
 
 
 
