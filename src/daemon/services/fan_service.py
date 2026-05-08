@@ -22,6 +22,9 @@ from common.dbus_helpers import run_service, system_sleeping
 
 logger = setup_logging("fan")
 
+PWM_MAX = 255
+PWM_FALLBACK_MIN = 220
+
 # ─── Fan Controller ───────────────────────────────────────────────────────────
 
 
@@ -139,7 +142,15 @@ class FanController:
         return 0
 
     def get_target_speed(self, fan_num):
-        return self._hwmon_read(f"fan{fan_num}_target")
+        target_path = os.path.join(self.hwmon_path, f"fan{fan_num}_target") if self.hwmon_path else None
+        if target_path and sysfs_exists(target_path):
+            return sysfs_read(target_path)
+
+        if self._has_pwm_fallback():
+            pwm = self._hwmon_read("pwm1")
+            return int(self.get_max_speed(fan_num) * pwm / PWM_MAX)
+
+        return 0
 
     # ── write ─────────────────────────────────────────────────────────
 
@@ -179,10 +190,43 @@ class FanController:
             return False
         rpm = max(0, min(rpm, self.get_max_speed(fan_num)))
         path = os.path.join(self.hwmon_path, f"fan{fan_num}_target")
-        ok = sysfs_write(path, rpm)
+        if sysfs_exists(path):
+            ok = sysfs_write(path, rpm)
+        elif self._has_pwm_fallback():
+            ok = self._set_pwm_fallback_target(fan_num, rpm)
+        else:
+            logger.warning(
+                "No fan%d_target or pwm1 fallback available under %s",
+                fan_num,
+                self.hwmon_path,
+            )
+            return False
+
         if ok:
             logger.info("Fan %d target set to %d RPM", fan_num, rpm)
         return ok
+
+    def _has_pwm_fallback(self):
+        if not self.hwmon_path:
+            return False
+        return sysfs_exists(os.path.join(self.hwmon_path, "pwm1"))
+
+    def _set_pwm_fallback_target(self, fan_num, rpm):
+        max_speed = self.get_max_speed(fan_num)
+        if max_speed <= 0:
+            max_speed = 6000
+
+        pwm = int(round(rpm * PWM_MAX / max_speed))
+        pwm = max(0, min(pwm, PWM_MAX))
+        if pwm > 0:
+            pwm = max(pwm, PWM_FALLBACK_MIN)
+
+        enable_path = os.path.join(self.hwmon_path, "pwm1_enable")
+        if sysfs_exists(enable_path) and self.get_mode() != "custom":
+            if not self.set_mode("custom"):
+                return False
+
+        return sysfs_write(os.path.join(self.hwmon_path, "pwm1"), pwm)
 
     def is_available(self):
         return self.hwmon_path is not None and self.fan_count > 0
