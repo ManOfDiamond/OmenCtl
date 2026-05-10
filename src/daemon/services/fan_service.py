@@ -24,6 +24,7 @@ logger = setup_logging("fan")
 
 PWM_MAX = 255
 PWM_FALLBACK_MIN = 220
+THERMAL_PROFILE_MAX = 1
 
 # ─── Fan Controller ───────────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ class FanController:
         ):
             if not sysfs_exists(path):
                 continue
-            return "max" if sysfs_read(path, 0) == 1 else "auto"
+            return "max" if sysfs_read(path, 0) == THERMAL_PROFILE_MAX else "auto"
 
         for path in (
             "/sys/firmware/acpi/platform_profile",
