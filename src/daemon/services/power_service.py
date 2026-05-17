@@ -184,6 +184,10 @@ class PowerProfileController:
             elif self.mode == "omen_direct":
                 if not self._sync_omen_profile(profile):
                     return False
+                threading.Thread(
+                    target=self._sync_runtime_power, args=(profile,), daemon=True
+                ).start()
+                return True
 
             threading.Thread(
                 target=self._sync_hardware_power, args=(profile,), daemon=True
@@ -237,11 +241,14 @@ class PowerProfileController:
         except Exception as e:
             logger.warning("Failed to sync NVIDIA power curve: %s", e)
 
-    def _sync_hardware_power(self, profile):
-        """Orchestrate NVIDIA SMI and Kernel WMI power limits."""
-        self._sync_omen_profile(profile)
+    def _sync_runtime_power(self, profile):
         self._sync_nvidia_power(profile)
         self._sync_kernel_gpu_power(profile)
+
+    def _sync_hardware_power(self, profile):
+        """Orchestrate platform profile sync and GPU power limits."""
+        self._sync_omen_profile(profile)
+        self._sync_runtime_power(profile)
 
     def _sync_kernel_gpu_power(self, profile):
         """Trigger TGP and PPAB via the patched hp-wmi driver."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OMEN Command Center for Linux — MUX (GPU Switch) Microservice."""
 
-import json, os, shutil, subprocess, sys, threading, time, typing
+import json, os, re, shutil, subprocess, sys, threading, time, typing
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -64,8 +64,6 @@ class MUXController:
 
     @staticmethod
     def _normalize_mode(raw_mode):
-        import re
-
         mode = str(raw_mode or "").strip().lower()
         tokens = set(re.findall(r"[a-z]+", mode))
         if "hybrid" in tokens or "on-demand" in mode or ("on" in tokens and "demand" in tokens):
