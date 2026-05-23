@@ -21,7 +21,7 @@
 
 ## 🛠️ What's New in v1.4.0?
 
-### 🛡️ Enterprise-Grade Security Architecture
+### 🛡️ Updated Security Architecture
 The application has undergone a comprehensive security audit and refactoring:
 - **Kernel Memory Safety**: Fixed ACPI buffer overflows and uninitialized memory leaks in `hp-wmi` and `hp-rgb-lighting`.
 - **Race Condition Prevention**: Introduced global mutexes to prevent WMI command clobbering between kernel modules.
