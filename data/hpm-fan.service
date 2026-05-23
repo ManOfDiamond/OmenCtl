@@ -27,7 +27,9 @@ ProtectControlGroups=true
 RestrictNamespaces=true
 MemoryDenyWriteExecute=true
 SystemCallFilter=@system-service
-CapabilityBoundingSet=CAP_SYS_RAWIO CAP_DAC_OVERRIDE
+CapabilityBoundingSet=CAP_DAC_OVERRIDE
+PrivateNetwork=yes
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

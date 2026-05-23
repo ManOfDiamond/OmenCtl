@@ -2,8 +2,7 @@
 
 set -euo pipefail
 
-OUT_DIR="/tmp/hp-wmi-raw-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$OUT_DIR"
+OUT_DIR=$(mktemp -d /tmp/hp-wmi-raw-XXXXXXX)
 
 {
     echo "timestamp=$(date -Is)"

@@ -78,6 +78,8 @@ static inline int encode_outsize_for_pvsz(int outsize) {
   return 1;
 }
 
+extern struct mutex hp_wmi_mutex;
+
 static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
                                 void *buffer, int insize, int outsize) {
   struct acpi_buffer input, output = {ACPI_ALLOCATE_BUFFER, NULL};
@@ -107,7 +109,9 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
   args->datasize = insize;
   memcpy(args->data, buffer, flex_array_size(args, data, insize));
 
+  mutex_lock(&hp_wmi_mutex);
   ret = wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
+  mutex_unlock(&hp_wmi_mutex);
   if (ret)
     goto out_free;
 
@@ -224,9 +228,16 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
 static ssize_t brightness_show(struct device *dev,
                                struct device_attribute *attr, char *buf) {
   u8 data = 0;
+  int ret;
 
-  hp_wmi_perform_query(HPWMI_BRIGHTNESS_GET_QUERY, HPWMI_BACKLIGHT, &data,
+  mutex_lock(&rgb_mutex);
+  ret = hp_wmi_perform_query(HPWMI_BRIGHTNESS_GET_QUERY, HPWMI_BACKLIGHT, &data,
                        sizeof(data), sizeof(data));
+  mutex_unlock(&rgb_mutex);
+  
+  if (ret)
+    return ret;
+
   /* 0xE4 = on, 0x64 = off */
   return sysfs_emit(buf, "%d\n", data == 0xE4 ? 1 : 0);
 }
@@ -236,22 +247,37 @@ static ssize_t brightness_store(struct device *dev,
                                 size_t count) {
   unsigned int val;
   u8 data;
+  int ret;
 
   if (kstrtouint(buf, 10, &val))
     return -EINVAL;
+  if (val > 1)
+    return -EINVAL;
 
   data = val ? 0xE4 : 0x64;
-  hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
+  
+  mutex_lock(&rgb_mutex);
+  ret = hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
                        sizeof(data), sizeof(data));
-  return count;
+  mutex_unlock(&rgb_mutex);
+  
+  return ret ? ret : count;
 }
 
 /* ── gaming key (win lock) ── */
 static ssize_t win_lock_show(struct device *dev,
                               struct device_attribute *attr, char *buf) {
   u8 data = 0;
-  hp_wmi_perform_query(HPWMI_GAMING_KEY, HPWMI_READ, &data,
+  int ret;
+  
+  mutex_lock(&rgb_mutex);
+  ret = hp_wmi_perform_query(HPWMI_GAMING_KEY, HPWMI_READ, &data,
                        sizeof(data), sizeof(data));
+  mutex_unlock(&rgb_mutex);
+  
+  if (ret)
+    return ret;
+    
   return sysfs_emit(buf, "%d\n", data & 0x01);
 }
 
@@ -260,12 +286,21 @@ static ssize_t win_lock_store(struct device *dev,
                                size_t count) {
   unsigned int val;
   u8 data;
+  int ret;
+  
   if (kstrtouint(buf, 10, &val))
     return -EINVAL;
+  if (val > 1)
+    return -EINVAL;
+    
   data = val ? 0x01 : 0x00;
-  hp_wmi_perform_query(HPWMI_GAMING_KEY, HPWMI_WRITE, &data,
+  
+  mutex_lock(&rgb_mutex);
+  ret = hp_wmi_perform_query(HPWMI_GAMING_KEY, HPWMI_WRITE, &data,
                        sizeof(data), sizeof(data));
-  return count;
+  mutex_unlock(&rgb_mutex);
+  
+  return ret ? ret : count;
 }
 
 /* ── sysfs attributes ── */

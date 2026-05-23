@@ -241,8 +241,8 @@ class PlatformService:
             if os.path.exists(hwdb_path):
                 try:
                     os.remove(hwdb_path)
-                    subprocess.run(["systemd-hwdb", "update"], capture_output=True)
-                    subprocess.run(["udevadm", "trigger", "-s", "input"], capture_output=True)
+                    subprocess.run(["systemd-hwdb", "update"], capture_output=True, check=True, timeout=10)
+                    subprocess.run(["udevadm", "trigger", "-s", "input"], capture_output=True, check=True, timeout=10)
                 except Exception: pass
             return
         content = [
@@ -262,8 +262,8 @@ class PlatformService:
             with open(hwdb_path, "w") as f: f.write(new_content)
             def _apply():
                 try:
-                    subprocess.run(["systemd-hwdb", "update"], check=True)
-                    subprocess.run(["udevadm", "trigger", "-s", "input"], check=True)
+                    subprocess.run(["systemd-hwdb", "update"], check=True, timeout=10)
+                    subprocess.run(["udevadm", "trigger", "-s", "input"], check=True, timeout=10)
                     logger.info("Keyboard fixes applied via hwdb")
                 except Exception as e:
                     logger.error("Failed to apply hwdb: %s", e)

@@ -12,7 +12,7 @@ BIN_LINK="/usr/bin/hp-manager"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.3.7"
+VERSION="1.4.0"
 
 # Colors
 RED='\033[0;31m'
