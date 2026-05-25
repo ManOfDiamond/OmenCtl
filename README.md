@@ -13,13 +13,38 @@
 
 ## 📖 Presentation
 
+### 🌓 Sleek Theme-Adaptive UI (Dark & Light Modes)
+
 <p align="center">
-  <img src="screenshots/performancepage.png" alt="Performance Dashboard" width="48%">
-  <img src="screenshots/keyboardlighting.png" alt="Keyboard RGB Lighting" width="48%">
+  <b>📊 Performance Dashboard</b>
 </p>
 <p align="center">
-  <img src="screenshots/muxpage.png" alt="MUX GPU Switch" width="48%">
-  <img src="screenshots/settingspage.png" alt="Settings & Custom Themes" width="48%">
+  <img src="screenshots/performancedark.png" alt="Performance Dashboard Dark" width="48%">
+  <img src="screenshots/performancelight.png" alt="Performance Dashboard Light" width="48%">
+</p>
+
+<p align="center">
+  <b>🌈 Keyboard RGB Lighting</b>
+</p>
+<p align="center">
+  <img src="screenshots/keyboardlightingdark.png" alt="Keyboard RGB Lighting Dark" width="48%">
+  <img src="screenshots/keyboardligthinglight.png" alt="Keyboard RGB Lighting Light" width="48%">
+</p>
+
+<p align="center">
+  <b>🎮 MUX GPU Switch</b>
+</p>
+<p align="center">
+  <img src="screenshots/muxpagedark.png" alt="MUX GPU Switch Dark" width="48%">
+  <img src="screenshots/muxpagelight.png" alt="MUX GPU Switch Light" width="48%">
+</p>
+
+<p align="center">
+  <b>⚙️ Settings & Custom Themes</b>
+</p>
+<p align="center">
+  <img src="screenshots/settingspagedark.png" alt="Settings Page Dark" width="48%">
+  <img src="screenshots/settingspagelight.png" alt="Settings Page Light" width="48%">
 </p>
 
 ---
