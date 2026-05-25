@@ -29,16 +29,16 @@ import cairo
 # Add parent path for imports
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Check relative to source (2 levels up -> src/OmenCommandCenterforLinux)
+# Check relative to source (2 levels up -> src/OmenCtl)
 PROJ_SRC = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 
 # Check relative to installed location (1 level up -> /usr/share/hp-manager)
 PROJ_INSTALLED = os.path.abspath(os.path.join(BASE_DIR, ".."))
 
-if os.path.exists(os.path.join(PROJ_SRC, "images", "omenapplogo.png")):
+if os.path.exists(os.path.join(PROJ_SRC, "images", "omenctl.png")):
     IMAGES_DIR = os.path.join(PROJ_SRC, "images")
     PROJECT_DIR = PROJ_SRC
-elif os.path.exists(os.path.join(PROJ_INSTALLED, "images", "omenapplogo.png")):
+elif os.path.exists(os.path.join(PROJ_INSTALLED, "images", "omenctl.png")):
     IMAGES_DIR = os.path.join(PROJ_INSTALLED, "images")
     PROJECT_DIR = PROJ_INSTALLED
 else:
@@ -52,10 +52,9 @@ from pages.fan_page import FanPage
 from pages.lighting_page import LightingPage
 from pages.mux_page import MUXPage
 from pages.settings_page import SettingsPage
-from pages.dashboard_page import DashboardPage
 from pages.keyboard_page import KeyboardPage
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -270,7 +269,7 @@ class FixedMenuIcon(Gtk.DrawingArea):
 class HPManagerWindow(Gtk.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.set_title("Omen Command Center")
+        self.set_title("OmenCtl")
         self.set_default_size(1100, 750)
         self.set_decorated(True)
         self.set_resizable(True)
@@ -281,7 +280,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         if IMAGES_DIR not in icon_theme.get_search_path():
             icon_theme.add_search_path(IMAGES_DIR)
 
-        self.set_icon_name("omenapplogo")
+        self.set_icon_name("omenctl")
 
         self.app_theme = "dark"
         self.temp_unit = "C"
@@ -305,6 +304,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self._back_button_floating = False
         self._scroll_adjustment = None
         self._scroll_adjustment_handler = 0
+        self._sidebar_tick_id = 0
+        self._sidebar_current_width = 68
         self._load_config()
         self.page_titles = {
             "dashboard": T("dashboard"),
@@ -325,6 +326,13 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         # architecture was introduced in v1.3.5.
         GLib.idle_add(self._connect_daemon)
         self._start_launcher_metrics()
+
+        if HAS_ADW:
+            try:
+                sm = Adw.StyleManager.get_default()
+                sm.connect("notify::dark", lambda *_: self._update_theme_toggle_icon_state())
+            except Exception:
+                pass
 
     @staticmethod
     def _home_title():
@@ -559,71 +567,80 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         if actual_theme == "dark":
             mode_accent_map = {
-                "eco": "#56d17a",
-                "balanced": "#3ca8ff",
-                "performance": "#ef5b4a",
+                "eco": "#00f5a0",       # Vibrant Cyber Neon Mint
+                "balanced": "#a855f7",  # Vibrant Electric Amethyst
+                "performance": "#ff007f", # Vibrant Hot Neon Pink/Magenta
             }
-            accent              = mode_accent_map.get(self.performance_mode, "#3ca8ff")
+            accent              = mode_accent_map.get(self.performance_mode, "#a855f7")
             accent_hover        = self._lighten(accent, 12)
             ar, ag, ab          = self._hex_to_rgb(accent)
-            accent_dim          = f"rgba({ar}, {ag}, {ab}, 0.18)"
-            accent_shadow       = "rgba(255,255,255,0.14)"
-            accent_shadow_strong = "rgba(255,255,255,0.22)"
-            accent_glow         = "rgba(255,255,255,0.10)"
-            accent_border_hover = f"rgba({ar}, {ag}, {ab}, 0.38)"
+            accent_dim          = f"rgba({ar}, {ag}, {ab}, 0.12)" # Sleek subtle accent alpha
+            accent_shadow       = f"rgba({ar}, {ag}, {ab}, 0.28)" # Dynamic glowing colored shadow
+            accent_shadow_strong = f"rgba({ar}, {ag}, {ab}, 0.42)"
+            accent_glow         = f"rgba({ar}, {ag}, {ab}, 0.16)" # Interactive glow
+            accent_border_hover = f"rgba({ar}, {ag}, {ab}, 0.48)"
             accent_dark         = self._darken(accent, 60)
-            bg             = "#121316"
-            sidebar_bg     = "rgba(14,15,18,0.56)"
-            card_bg        = "rgba(44,45,50,0.92)"
-            card_border    = "rgba(220,228,239,0.14)"
-            sep_color      = "rgba(255,255,255,0.12)"
+            bg             = "#07080c"                         # Deep Obsidian Black
+            sidebar_bg     = "#0a0b12"                         # Deep sidebar base
+            sidebar_bg2    = "#10111a"                         # Sidebar gradient end
+            card_bg        = "rgba(20, 18, 28, 0.72)"         # Translucent Amethyst Glass
+            card_border    = "rgba(255, 255, 255, 0.07)"       # Frosted border
+            sep_color      = "rgba(168, 85, 247, 0.12)"        # Purple-tinted separator
             fg             = "#ffffff"
-            fg_dim         = "#d0d4dc"
-            fg_very_dim    = "#9ea6b4"
-            input_bg       = "rgba(255,255,255,0.11)"
+            fg_dim         = "#cbd5e1"
+            fg_very_dim    = "#94a3b8"
+            input_bg       = "rgba(255, 255, 255, 0.08)"
             clean_ram_color = "inherit"
             launcher_title_color = "#ffffff"
-            launcher_subtitle_color = "#8d96a6"
-            launcher_metric_main_color = "#f2f4f7"
-            launcher_metric_sub_color = "#a1a7b3"
-            launcher_temp_warm_color = "#d4dbe6"
-            launcher_mode_badge_color = "#f9e5da"
-            launcher_mode_badge_muted_color = "#c7ceda"
-            launcher_dimmed_opacity = 0.62
-            topbar_bg      = "rgba(28,29,34,0.90)"
-            topbar_border  = "rgba(255,255,255,0.14)"
-            topbar_shadow  = "rgba(0,0,0,0.48)"
+            launcher_subtitle_color = "#94a3b8"
+            launcher_metric_main_color = "#f8fafc"
+            launcher_metric_sub_color = "#cbd5e1"
+            launcher_temp_warm_color = "#e2e8f0"
+            launcher_mode_badge_color = "rgba(168, 85, 247, 0.15)"
+            launcher_mode_badge_muted_color = "rgba(255, 255, 255, 0.06)"
+            launcher_dimmed_opacity = 0.55
+            topbar_bg      = "rgba(10, 11, 15, 0.85)"
+            topbar_border  = "rgba(255, 255, 255, 0.08)"
+            topbar_shadow  = "rgba(0,0,0,0.65)"
         else:
-            bg             = "#f0f0f4"
-            sidebar_bg     = "rgba(255,255,255,0.5)"
-            card_bg        = "rgba(255,255,255,0.78)"
-            card_border    = "rgba(0,0,0,0.08)"
-            sep_color      = "rgba(0,0,0,0.12)"
-            fg             = "#121212"
-            fg_dim         = "#444444"
-            fg_very_dim    = "#666666"
-            input_bg       = "rgba(0,0,0,0.06)"
-            clean_ram_color = "#000000"
-            launcher_title_color = "#1a1d24"
-            launcher_subtitle_color = "#505a68"
-            launcher_metric_main_color = "#232831"
-            launcher_metric_sub_color = "#5d6878"
-            launcher_temp_warm_color = "#4f6178"
-            launcher_mode_badge_color = "#1f2836"
-            launcher_mode_badge_muted_color = "#364355"
-            launcher_dimmed_opacity = 0.86
-            topbar_bg      = "rgba(255,255,255,0.86)"
-            topbar_border  = "rgba(0,0,0,0.10)"
-            topbar_shadow  = "rgba(0,0,0,0.16)"
-            accent              = self._darken(accent, 20)
+            bg             = "#f3f4f6"                         # Minimalist Porcelain
+            sidebar_bg     = "#f8f9fb"                         # Light sidebar base
+            sidebar_bg2    = "#f0f1f5"                         # Light sidebar gradient end
+            card_bg        = "rgba(255, 255, 255, 0.85)"
+            card_border    = "rgba(0, 0, 0, 0.06)"
+            sep_color      = "rgba(0, 0, 0, 0.08)"
+            fg             = "#0f172a"
+            fg_dim         = "#475569"
+            fg_very_dim    = "#64748b"
+            input_bg       = "rgba(0, 0, 0, 0.05)"
+            clean_ram_color = "#0f172a"
+            launcher_title_color = "#0f172a"
+            launcher_subtitle_color = "#475569"
+            launcher_metric_main_color = "#0f172a"
+            launcher_metric_sub_color = "#475569"
+            launcher_temp_warm_color = "#334155"
+            launcher_mode_badge_color = "rgba(0, 0, 0, 0.05)"
+            launcher_mode_badge_muted_color = "rgba(0, 0, 0, 0.02)"
+            launcher_dimmed_opacity = 0.75
+            topbar_bg      = "rgba(255, 255, 255, 0.90)"
+            topbar_border  = "rgba(0, 0, 0, 0.06)"
+            topbar_shadow  = "rgba(0, 0, 0, 0.08)"
+            
+            # Recalculate accent for light mode to maintain contrast
+            mode_accent_map_light = {
+                "eco": "#0d9488",       # Deep Mint Teal
+                "balanced": "#4f46e5",  # Deep Royal Indigo
+                "performance": "#db2777" # Deep Crimson/Rose
+            }
+            accent              = mode_accent_map_light.get(self.performance_mode, "#4f46e5")
             accent_hover        = self._darken(accent, 10)
             ar, ag, ab          = self._hex_to_rgb(accent)
-            accent_dim          = f"rgba({ar}, {ag}, {ab}, 0.15)"
-            accent_shadow       = "rgba(255,255,255,0.12)"
-            accent_shadow_strong = "rgba(255,255,255,0.18)"
-            accent_glow         = "rgba(255,255,255,0.08)"
-            accent_border_hover = f"rgba({ar}, {ag}, {ab}, 0.3)"
-            accent_dark         = self._darken(accent, 60)
+            accent_dim          = f"rgba({ar}, {ag}, {ab}, 0.12)"
+            accent_shadow       = f"rgba({ar}, {ag}, {ab}, 0.18)"
+            accent_shadow_strong = f"rgba({ar}, {ag}, {ab}, 0.32)"
+            accent_glow         = f"rgba({ar}, {ag}, {ab}, 0.10)"
+            accent_border_hover = f"rgba({ar}, {ag}, {ab}, 0.32)"
+            accent_dark         = self._darken(accent, 40)
 
         presets_css = ""
         surface_radius = 16
@@ -649,8 +666,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         }}
         .app-shell {{
             background-color: {bg};
-            border-radius: {surface_radius}px;
-            border: 1px solid {card_border};
+            border-radius: 0px;
+            border: none;
         }}
         .app-scale-compact .card {{
             padding: 16px;
@@ -691,6 +708,53 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             border-radius: {surface_radius}px;
             padding: 2px 8px;
             box-shadow: 0 12px 28px {topbar_shadow};
+            transition: background-color 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+        }}
+        .floating-sidebar {{
+            background: linear-gradient(180deg, {sidebar_bg} 0%, {sidebar_bg2} 100%);
+            border: none;
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 0px;
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
+            overflow: hidden;
+            transition: background-color 260ms ease, border-color 260ms ease, box-shadow 260ms ease, opacity 260ms ease;
+        }}
+        .sidebar-header-area {{
+            padding: 16px 12px 12px 12px;
+            margin-bottom: 0px;
+        }}
+        .sidebar-header-sep {{
+            background: linear-gradient(90deg, transparent 5%, rgba({ar}, {ag}, {ab}, 0.18) 50%, transparent 95%);
+            min-height: 1px;
+            margin: 0px 14px 4px 14px;
+        }}
+        .sidebar-device-btn {{
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            margin: 0px;
+            transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }}
+        .sidebar-device-btn:hover {{
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba({ar}, {ag}, {ab}, 0.25);
+            box-shadow: 0 4px 16px rgba({ar}, {ag}, {ab}, 0.12), 0 2px 8px rgba(0, 0, 0, 0.25);
+            transform: scale(1.04);
+        }}
+        .sidebar-device-btn:active {{
+            transform: scale(0.96);
+            background: rgba(255, 255, 255, 0.04);
+        }}
+        .sidebar-device-model {{
+            font-size: 11px;
+            font-weight: 700;
+            color: {fg_dim};
+            text-align: center;
+            margin-top: 6px;
+            padding: 0 4px;
+            transition: opacity 180ms ease;
         }}
         .floating-page-title {{
             font-size: 12px;
@@ -700,32 +764,13 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             border-radius: 999px;
             border: 1px solid {card_border};
             background: alpha({fg}, 0.04);
-        }}
-        .floating-sidebar {{
-            background: rgba(19, 20, 24, 0.96);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: {surface_radius}px;
-            box-shadow: 0 14px 30px rgba(0,0,0,0.65);
-        }}
-        .floating-sidebar .nav-label,
-        .floating-sidebar .nav-icon {{
-            color: #aeb3bf;
-        }}
-        .floating-sidebar .nav-item:hover {{
-            background-color: rgba(255,255,255,0.06);
-        }}
-        .floating-sidebar .nav-item.active {{
-            background-color: rgba(255,255,255,0.09);
-        }}
-        .floating-sidebar .nav-item.active .nav-label,
-        .floating-sidebar .nav-item.active .nav-icon {{
-            color: {accent};
+            transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease;
         }}
         .content-shell {{
-            background: {card_bg};
-            border: 1px solid {card_border};
-            border-radius: {surface_radius}px;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.14);
+            background: transparent;
+            border: none;
+            border-radius: 0px;
+            box-shadow: none;
         }}
         .window-control-btn {{
             min-width: 28px;
@@ -793,12 +838,14 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             font-weight: 800;
             letter-spacing: 0.3px;
             color: {launcher_title_color};
+            transition: color 220ms ease;
         }}
         .launcher-page-subtitle {{
             font-size: 11px;
             color: {launcher_subtitle_color};
             font-weight: 500;
             margin-bottom: 2px;
+            transition: color 220ms ease;
         }}
         .launcher-card {{
             background: alpha({fg}, 0.025);
@@ -812,8 +859,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         }}
         .launcher-card:hover {{
             background: alpha({fg}, 0.045);
-            border-color: #005a9e;
-            box-shadow: 0 12px 24px rgba(0,0,0,0.28), 0 0 14px rgba(0, 90, 158, 0.18);
+            border-color: {accent};
+            box-shadow: 0 12px 24px rgba(0,0,0,0.28), 0 0 14px {accent_shadow};
             transform: translateY(-2px);
         }}
         .launcher-card:active {{
@@ -826,32 +873,38 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             border-top-right-radius: 14px;
             min-height: 76px;
             padding: 8px 10px;
+            transition: background-color 220ms ease, border-color 220ms ease;
         }}
         .launcher-icon-wrap image {{
             color: alpha({fg}, 0.9);
+            transition: color 220ms ease;
         }}
         .launcher-card-title {{
             font-size: 15px;
             font-weight: 760;
             letter-spacing: 0.2px;
             color: {launcher_title_color};
+            transition: color 220ms ease;
         }}
         .launcher-card-sub {{
             font-size: 10px;
             font-weight: 520;
             color: {launcher_subtitle_color};
+            transition: color 220ms ease;
         }}
         .launcher-metric-main {{
             font-size: 12px;
             font-weight: 700;
             color: {launcher_metric_main_color};
             font-family: "JetBrains Mono", "Geist", "Inter", monospace;
+            transition: color 220ms ease;
         }}
         .launcher-metric-sub {{
             font-size: 10px;
             color: {launcher_metric_sub_color};
             font-weight: 520;
             font-family: "JetBrains Mono", "Geist", "Inter", monospace;
+            transition: color 220ms ease;
         }}
         .launcher-temp-cool {{ color: #57c494; }}
         .launcher-temp-warm {{ color: {launcher_temp_warm_color}; }}
@@ -864,6 +917,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             color: {launcher_mode_badge_color};
             font-size: 10px;
             font-weight: 700;
+            transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease;
         }}
         .launcher-mode-badge-muted {{
             background: rgba(122, 128, 140, 0.24);
@@ -916,16 +970,19 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         /* ── Global text color — override Adw defaults ── */
         label {{
             color: {fg};
+            transition: color 220ms ease;
         }}
         .heading {{
             color: {fg};
             font-size: 15px;
             font-weight: 800;
             letter-spacing: 0.2px;
+            transition: color 220ms ease;
         }}
         .title-1, .title-2, .title-3, .title-4 {{
             color: {fg};
             font-family: "JetBrains Mono", "Inter", "Roboto Mono", monospace;
+            transition: color 220ms ease;
         }}
         .title-1 {{
             font-size: 30px;
@@ -947,12 +1004,15 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             color: {fg_dim};
             font-size: 12px;
             font-weight: 520;
+            transition: color 220ms ease;
         }}
         entry {{
             color: {fg};
+            transition: color 220ms ease;
         }}
         image {{
             color: {fg_dim};
+            transition: color 220ms ease;
         }}
         button label {{
             color: inherit;
@@ -1029,6 +1089,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             border: 1px solid alpha({accent}, 0.38);
             color: {fg};
             box-shadow: 0 0 10px alpha(#ffffff, 0.08);
+            transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
         }}
         .dashboard-link-btn:hover {{
             background: alpha({accent}, 0.22);
@@ -1061,42 +1122,78 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         /* ── Nav Items ── */
         .nav-item {{
-            padding: 10px 8px;
-            margin: 2px 8px;
-            border-radius: 6px;
-            border-left: 4px solid transparent;
-            transition: all 150ms ease-out;
+            padding: 10px 10px;
+            margin: 3px 8px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: all 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
             background: transparent;
-            border-top: none;
-            border-right: none;
-            border-bottom: none;
             min-height: 0;
         }}
         .nav-item:hover {{
-            background-color: {accent_dim};
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.06);
         }}
         .nav-item.active {{
-            background-color: {accent_dim};
-            border-left: 4px solid {accent};
+            background: linear-gradient(135deg, rgba({ar}, {ag}, {ab}, 0.14), rgba({ar}, {ag}, {ab}, 0.06));
+            border-color: rgba({ar}, {ag}, {ab}, 0.22);
+            box-shadow: 0 0 12px rgba({ar}, {ag}, {ab}, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }}
         .nav-item.active image,
         .nav-item.active label {{
             color: {accent};
         }}
+        .theme-toggle-btn {{
+            background: alpha({accent}, 0.12);
+            border-color: alpha({accent}, 0.28);
+            box-shadow: 0 2px 10px alpha({accent}, 0.08);
+        }}
+        .theme-toggle-btn:hover {{
+            background: alpha({accent}, 0.20);
+            border-color: alpha({accent}, 0.40);
+            box-shadow: 0 4px 14px alpha({accent}, 0.14);
+        }}
         .nav-label {{
-            font-size: 10px;
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 620;
             color: {fg_dim};
-            margin-top: 4px;
+            margin: 0px;
+            transition: color 180ms ease;
+        }}
+        .nav-item:hover .nav-label {{
+            color: {fg};
         }}
         .nav-item.active .nav-label {{
             color: {accent};
+            font-weight: 680;
         }}
         .nav-icon {{
-            color: {fg_dim};
+            color: {fg_very_dim};
+            transition: color 180ms ease;
+        }}
+        .theme-toggle-btn .nav-icon {{
+            color: {accent};
+        }}
+        .nav-item:hover .nav-icon {{
+            color: {fg};
+        }}
+        .theme-toggle-btn:hover .nav-icon {{
+            color: {accent};
         }}
         .nav-item.active .nav-icon {{
             color: {accent};
+        }}
+        .nav-indicator {{
+            background: {accent};
+            border-radius: 999px;
+            min-width: 3px;
+            min-height: 18px;
+            margin-right: 2px;
+            box-shadow: 0 0 8px rgba({ar}, {ag}, {ab}, 0.5);
+            transition: opacity 180ms ease;
+        }}
+        .nav-indicator-hidden {{
+            opacity: 0;
         }}
 
         /* ── Pages ── */
@@ -1897,8 +1994,15 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.menu_back_btn.set_size_request(32, 32)
         left.append(self.menu_back_btn)
 
-        brand_icon = Gtk.Image.new_from_icon_name("omenapplogo")
-        brand_icon.set_pixel_size(20)
+        brand_icon = Gtk.Image()
+        logo_path = os.path.join(IMAGES_DIR, "omenctl.png")
+        if os.path.exists(logo_path):
+            texture = Gdk.Texture.new_from_filename(logo_path)
+            brand_icon.set_from_paintable(texture)
+            brand_icon.set_pixel_size(20)
+        else:
+            brand_icon.set_from_icon_name("omenctl")
+            brand_icon.set_pixel_size(20)
         left.append(brand_icon)
 
         self.floating_page_title = Gtk.Label(label=self._home_title())
@@ -1927,27 +2031,184 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         sidebar.add_css_class("sidebar")
         sidebar.add_css_class("floating-sidebar")
-        sidebar.set_size_request(88, -1)
+        sidebar.set_size_request(68, -1)
+        sidebar.set_vexpand(True)
+        sidebar.set_valign(Gtk.Align.FILL)
+        sidebar.set_hexpand(False)
 
+        # ── Header area with device logo ──
+        header_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                              halign=Gtk.Align.CENTER)
+        header_area.add_css_class("sidebar-header-area")
+
+        brand = get_model_branding().lower()
+        img_name = "victus.png" if "victus" in brand else "omen.png"
+        img_path = os.path.join(IMAGES_DIR, img_name)
+
+        device_btn = Gtk.Button()
+        device_btn.add_css_class("sidebar-device-btn")
+
+        device_img = Gtk.Image()
+        if os.path.exists(img_path):
+            texture = Gdk.Texture.new_from_filename(img_path)
+            device_img.set_from_paintable(texture)
+        else:
+            device_img.set_from_icon_name("computer-symbolic")
+        device_img.set_pixel_size(48)
+        device_btn.set_child(device_img)
+        device_btn.set_tooltip_text("Menüyü Aç/Kapat" if get_lang() == "tr" else "Toggle Menu")
+        device_btn.connect("clicked", self._toggle_sidebar)
+
+        header_area.append(device_btn)
+
+        # Device model name visible under logo when expanded
+        device_model = get_device_model_name()
+        self.device_model_lbl = Gtk.Label(label=device_model)
+        self.device_model_lbl.add_css_class("sidebar-device-model")
+        self.device_model_lbl.set_visible(False)
+        self.device_model_lbl.set_valign(Gtk.Align.CENTER)
+        self.device_model_lbl.set_halign(Gtk.Align.CENTER)
+        header_area.append(self.device_model_lbl)
+
+        sidebar.append(header_area)
+
+        # ── Gradient accent separator ──
+        header_sep = Gtk.DrawingArea()
+        header_sep.add_css_class("sidebar-header-sep")
+        header_sep.set_content_height(1)
+        sidebar.append(header_sep)
+
+        # ── Top spacer for vertical centering ──
+        top_spacer = Gtk.Label(vexpand=True)
+        sidebar.append(top_spacer)
+
+        # ── Navigation items (excluding Settings) ──
         nav_items = [
-            ("dashboard", self.page_titles["dashboard"], "view-grid-symbolic"),
             ("fan",       self.page_titles["fan"],       "weather-tornado-symbolic"),
-            ("lighting",  self.page_titles["lighting"],  "weather-clear-night-symbolic"),
-            ("keyboard",  self.page_titles["keyboard"],  "input-keyboard-symbolic"),
+            ("lighting",  self.page_titles["lighting"],  "display-brightness-symbolic"),
             ("mux",       "MUX",                        "video-display-symbolic"),
         ]
 
-        nav_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=12)
+        self.nav_indicators = {}
+        nav_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         for page_id, label, icon_name in nav_items:
             nav_box.append(self._make_nav_button(page_id, label, icon_name))
         sidebar.append(nav_box)
 
-        sidebar.append(Gtk.Label(vexpand=True))
+        # ── Bottom spacer for vertical centering ──
+        bottom_spacer = Gtk.Label(vexpand=True)
+        sidebar.append(bottom_spacer)
 
-        settings_btn = self._make_nav_button("settings", self.page_titles["settings"], "emblem-system-symbolic")
-        sidebar.append(settings_btn)
-        sidebar.append(Gtk.Box(margin_bottom=10))
+        # ── Bottom items (Theme Toggle & Settings) ──
+        bottom_nav_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+
+        # Theme toggle button
+        self.theme_toggle_btn = self._make_theme_toggle_button()
+        bottom_nav_box.append(self.theme_toggle_btn)
+
+        # Settings button
+        self.settings_btn = self._make_nav_button("settings", self.page_titles["settings"], "emblem-system-symbolic")
+        bottom_nav_box.append(self.settings_btn)
+
+        sidebar.append(bottom_nav_box)
+
         return sidebar
+
+    def _toggle_sidebar(self, _btn):
+        # Allow interrupting an active animation smoothly
+        if getattr(self, "_sidebar_tick_id", 0):
+            try:
+                self.sidebar.remove_tick_callback(self._sidebar_tick_id)
+            except Exception:
+                pass
+            self._sidebar_tick_id = 0
+
+        self._sidebar_animating = True
+        self.sidebar_expanded = not getattr(self, "sidebar_expanded", False)
+        
+        target_width = 200 if self.sidebar_expanded else 68
+        
+        # Always use the current animated width as start width to prevent instant jumps
+        self._sidebar_start_width = getattr(self, "_sidebar_current_width", 68)
+        self._sidebar_target_width = target_width
+        self._sidebar_start_time = None
+        self._sidebar_duration = 0.28 # Increased to 280ms for buttery-smooth sliding animation
+        
+        if self.sidebar_expanded:
+            # Expand: Show labels and device model with 0 opacity immediately so they fade in
+            for lbl in self.nav_labels.values():
+                lbl.set_visible(True)
+                lbl.set_opacity(0.0)
+            if hasattr(self, "device_model_lbl") and self.device_model_lbl is not None:
+                self.device_model_lbl.set_visible(True)
+                self.device_model_lbl.set_opacity(0.0)
+            for btn in self.nav_buttons.values():
+                box = btn.get_child()
+                if box:
+                    box.set_spacing(10)
+                    box.set_halign(Gtk.Align.START)
+                    box.set_margin_start(8)
+        else:
+            # Collapse: Hide labels and device model immediately to avoid awkward wrapping during transition
+            for lbl in self.nav_labels.values():
+                lbl.set_visible(False)
+            if hasattr(self, "device_model_lbl") and self.device_model_lbl is not None:
+                self.device_model_lbl.set_visible(False)
+            for btn in self.nav_buttons.values():
+                box = btn.get_child()
+                if box:
+                    box.set_spacing(0)
+                    box.set_halign(Gtk.Align.CENTER)
+                    box.set_margin_start(0)
+
+        # Start GdkFrameClock aligned animation tick
+        self._sidebar_tick_id = self.sidebar.add_tick_callback(self._animate_sidebar_tick)
+
+    def _animate_sidebar_tick(self, widget, frame_clock):
+        if not getattr(self, "_sidebar_animating", False):
+            self._sidebar_tick_id = 0
+            return False
+
+        frame_time = frame_clock.get_frame_time() / 1e6 # convert to seconds
+        if self._sidebar_start_time is None:
+            self._sidebar_start_time = frame_time
+
+        elapsed = frame_time - self._sidebar_start_time
+        t = min(1.0, elapsed / self._sidebar_duration)
+        
+        # Smooth easeOutCubic curve: f(t) = 1 - (1-t)^3
+        ease = 1 - (1 - t) ** 3
+        w = int(self._sidebar_start_width + (self._sidebar_target_width - self._sidebar_start_width) * ease)
+        
+        # Update animated width cache
+        self._sidebar_current_width = w
+        self.sidebar.set_size_request(w, -1)
+        
+        # Fade in the labels and device model label dynamically during expansion
+        if self.sidebar_expanded:
+            for lbl in self.nav_labels.values():
+                lbl.set_opacity(ease)
+            if hasattr(self, "device_model_lbl") and self.device_model_lbl is not None:
+                self.device_model_lbl.set_opacity(ease)
+        
+        if t >= 1.0:
+            self.sidebar.set_size_request(self._sidebar_target_width, -1)
+            self._sidebar_current_width = self._sidebar_target_width
+            self._sidebar_animating = False
+            self._sidebar_tick_id = 0
+            
+            if self.sidebar_expanded:
+                for lbl in self.nav_labels.values():
+                    lbl.set_opacity(1.0)
+                if hasattr(self, "device_model_lbl") and self.device_model_lbl is not None:
+                    self.device_model_lbl.set_opacity(1.0)
+                self.sidebar.add_css_class("expanded")
+            else:
+                self.sidebar.remove_css_class("expanded")
+                
+            return False
+            
+        return True
 
     def _build_ui(self):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -1965,13 +2226,14 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self._content_overlay = Gtk.Overlay(hexpand=True, vexpand=True)
         root.append(self._content_overlay)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0,
+        # Main horizontal layout: docked sidebar on the left, stack on the right
+        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0,
                        hexpand=True, vexpand=True)
-        body.set_margin_top(14)
-        body.set_margin_start(14)
-        body.set_margin_end(14)
-        body.set_margin_bottom(14)
         self._content_overlay.set_child(body)
+
+        # Build docked sidebar
+        self.sidebar = self._build_floating_sidebar()
+        body.append(self.sidebar)
 
         self.menu_back_btn = Gtk.Button()
         self.menu_back_btn.add_css_class("menu-back-btn")
@@ -1984,9 +2246,12 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
         content.add_css_class("content-shell")
+        content.set_margin_top(14)
+        content.set_margin_bottom(14)
+        content.set_margin_start(18)
+        content.set_margin_end(18)
         self.inline_page_header = Gtk.Box(spacing=8)
         self.inline_page_header.add_css_class("inline-page-header")
-        self.inline_page_header.append(self.menu_back_btn)
 
         self.inline_page_title = Gtk.Label(label="", xalign=0)
         self.inline_page_title.add_css_class("inline-page-title")
@@ -2000,7 +2265,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.home_page = self._build_home_page()
 
         # Pages
-        self.dashboard_page = DashboardPage(services=None, on_navigate=self._navigate)
         self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
         self.lighting_page   = LightingPage(service=None)
         self.keyboard_page   = KeyboardPage(service=None)
@@ -2013,7 +2277,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         )
 
         self.stack.add_named(self.home_page, "home")
-        self.stack.add_named(self.dashboard_page, "dashboard")
         self.stack.add_named(self.fan_page,        "fan")
         self.stack.add_named(self.lighting_page,   "lighting")
         self.stack.add_named(self.keyboard_page,   "keyboard")
@@ -2022,7 +2285,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         self.fan_page.set_dark(self.app_theme == "dark")
         self.fan_page.set_temp_unit(self.temp_unit)
-        self.dashboard_page.set_temp_unit(self.temp_unit)
 
         self._rebuilding = True
         self.settings_page.set_theme_index(
@@ -2031,7 +2293,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.settings_page.set_temp_unit_index(0 if self.temp_unit == "C" else 1)
         self._rebuilding = False
 
-        self._navigate("home")
+        self._navigate("fan")
         self._set_performance_mode("balanced")
         self._update_fullscreen_button_icon()
         self.connect("notify::fullscreened", self._on_fullscreen_state_changed)
@@ -2226,7 +2488,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             target.add_css_class(target_cls)
 
         self._apply_home_scale(bucket)
-        for page_attr in ("dashboard_page", "fan_page", "lighting_page", "keyboard_page", "mux_page", "settings_page"):
+        for page_attr in ("fan_page", "lighting_page", "keyboard_page", "mux_page", "settings_page"):
             page = getattr(self, page_attr, None)
             if page and hasattr(page, "set_ui_scale"):
                 try:
@@ -2486,15 +2748,31 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         btn = Gtk.Button()
         btn.add_css_class("nav-item")
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
-                      halign=Gtk.Align.CENTER)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0,
+                      halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+
+        # Vertical accent indicator bar
+        indicator = Gtk.DrawingArea()
+        indicator.add_css_class("nav-indicator")
+        indicator.add_css_class("nav-indicator-hidden")
+        indicator.set_content_width(3)
+        indicator.set_content_height(18)
+        indicator.set_valign(Gtk.Align.CENTER)
+        box.append(indicator)
+        self.nav_indicators[page_id] = indicator
+
         icon = Gtk.Image.new_from_icon_name(icon_name)
-        icon.set_pixel_size(22)
+        icon.set_pixel_size(24)
         icon.add_css_class("nav-icon")
+        icon.set_valign(Gtk.Align.CENTER)
         box.append(icon)
 
         lbl = Gtk.Label(label=label)
         lbl.add_css_class("nav-label")
+        lbl.set_visible(False) # HIDE BY DEFAULT ON STARTUP
+        lbl.set_valign(Gtk.Align.CENTER)
+        lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        lbl.set_wrap(False)
         self.nav_labels[page_id] = lbl
         box.append(lbl)
 
@@ -2502,6 +2780,80 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         btn.connect("clicked", lambda w, pid=page_id: self._navigate(pid))
         self.nav_buttons[page_id] = btn
         return btn
+
+    def _make_theme_toggle_button(self):
+        btn = Gtk.Button()
+        btn.add_css_class("nav-item")
+        btn.add_css_class("theme-toggle-btn")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0,
+                      halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+
+        # Align with other buttons via spacer
+        indicator = Gtk.Box()
+        indicator.set_size_request(3, 18)
+        indicator.set_valign(Gtk.Align.CENTER)
+        box.append(indicator)
+
+        self.theme_toggle_icon = Gtk.Image()
+        self.theme_toggle_icon.set_pixel_size(24)
+        self.theme_toggle_icon.add_css_class("nav-icon")
+        self.theme_toggle_icon.set_valign(Gtk.Align.CENTER)
+        box.append(self.theme_toggle_icon)
+
+        lbl_text = T("light") if self.app_theme == "dark" else T("dark")
+        self.theme_toggle_lbl = Gtk.Label(label=lbl_text)
+        self.theme_toggle_lbl.add_css_class("nav-label")
+        self.theme_toggle_lbl.set_visible(False)
+        self.theme_toggle_lbl.set_valign(Gtk.Align.CENTER)
+        self.theme_toggle_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        self.theme_toggle_lbl.set_wrap(False)
+        self.nav_labels["theme_toggle"] = self.theme_toggle_lbl
+        box.append(self.theme_toggle_lbl)
+
+        btn.set_child(box)
+        btn.connect("clicked", self._toggle_app_theme)
+        self.nav_buttons["theme_toggle"] = btn
+
+        self._update_theme_toggle_icon_state()
+        return btn
+
+    def _toggle_app_theme(self, _btn):
+        next_theme = "light" if self.app_theme == "dark" else "dark"
+        self._on_theme_change(next_theme)
+        if hasattr(self, "settings_page") and self.settings_page is not None:
+            self.settings_page.set_theme_index(0 if next_theme == "dark" else 1)
+
+    def _is_dark_mode(self):
+        if self.app_theme == "dark":
+            return True
+        elif self.app_theme == "light":
+            return False
+        
+        # System theme detection
+        if HAS_ADW:
+            try:
+                sm = Adw.StyleManager.get_default()
+                return sm.get_dark()
+            except Exception:
+                pass
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            try:
+                return bool(settings.get_property("gtk-application-prefer-dark-theme"))
+            except Exception:
+                pass
+        return False
+
+    def _update_theme_toggle_icon_state(self):
+        if not hasattr(self, "theme_toggle_icon") or self.theme_toggle_icon is None:
+            return
+        is_dark = self._is_dark_mode()
+        icon_name = "weather-clear-symbolic" if is_dark else "display-brightness-symbolic"
+        self.theme_toggle_icon.set_from_icon_name(icon_name)
+        lbl_text = T("light") if is_dark else T("dark")
+        if hasattr(self, "theme_toggle_lbl") and self.theme_toggle_lbl is not None:
+            self.theme_toggle_lbl.set_label(lbl_text)
 
     def _find_first_scrolled_window(self, widget):
         if widget is None:
@@ -2585,6 +2937,12 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                 btn.add_css_class("active")
             elif "active" in btn.get_css_classes():
                 btn.remove_css_class("active")
+        # Update indicator bars
+        for pid, ind in getattr(self, "nav_indicators", {}).items():
+            if pid == page_id:
+                ind.remove_css_class("nav-indicator-hidden")
+            elif "nav-indicator-hidden" not in ind.get_css_classes():
+                ind.add_css_class("nav-indicator-hidden")
         page = self.stack.get_child_by_name(page_id)
         if hasattr(page, "refresh"):
             page.refresh()
@@ -2593,7 +2951,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
     def _update_logo(self):
         """Load the app logo from disk into self.logo_icon."""
-        logo_path = os.path.join(IMAGES_DIR, "omenapplogo.png")
+        logo_path = os.path.join(IMAGES_DIR, "omenctl.png")
         if hasattr(self, 'logo_icon'):
             if os.path.exists(logo_path):
                 texture = Gdk.Texture.new_from_filename(logo_path)
@@ -2616,7 +2974,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                     self.services[name] = None
             
             self.ready = True
-            self.dashboard_page.set_services(self.services)
             self.fan_page.set_service(self.services["fan"])
             self.fan_page.set_platform_service(self.services["platform"])
             self.fan_page.set_power_service(self.services["power"])
@@ -2677,6 +3034,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.fan_page.set_dark(theme == "dark")
         self._update_logo()
         self._refresh_launcher_metrics()
+        self._update_theme_toggle_icon_state()
 
     def _on_lang_change(self, lang):
         if self._rebuilding:
@@ -3029,8 +3387,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self._save_config()
         if hasattr(self, 'fan_page'):
             self.fan_page.set_temp_unit(unit)
-        if hasattr(self, 'dashboard_page'):
-            self.dashboard_page.set_temp_unit(unit)
 
     # ── Page rebuild (language change) ────────────────────────────────────────
 
@@ -3039,19 +3395,20 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self._rebuilding = True
         try:
             current_page = self.stack.get_visible_child_name()
+            if current_page == "dashboard":
+                current_page = "fan"
 
-            for attr in ('dashboard_page', 'fan_page', 'lighting_page'):
+            for attr in ('fan_page', 'lighting_page'):
                 page = getattr(self, attr, None)
                 if page and hasattr(page, 'cleanup'):
                     page.cleanup()
 
-            for name in ("home", "dashboard", "fan", "lighting", "keyboard", "mux", "settings"):
+            for name in ("home", "fan", "lighting", "keyboard", "mux", "settings"):
                 child = self.stack.get_child_by_name(name)
                 if child:
                     self.stack.remove(child)
 
             self.home_page = self._build_home_page()
-            self.dashboard_page = DashboardPage(services=None, on_navigate=self._navigate)
             self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
             self.lighting_page   = LightingPage(service=None)
             self.keyboard_page   = KeyboardPage(service=None)
@@ -3064,7 +3421,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             )
 
             self.stack.add_named(self.home_page, "home")
-            self.stack.add_named(self.dashboard_page, "dashboard")
             self.stack.add_named(self.fan_page,        "fan")
             self.stack.add_named(self.lighting_page,   "lighting")
             self.stack.add_named(self.keyboard_page,   "keyboard")
@@ -3074,7 +3430,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             # Reconnect daemon services to the freshly-created pages
             services = getattr(self, "services", None)
             if services:
-                self.dashboard_page.set_services(services)
                 self.fan_page.set_service(services.get("fan"))
                 self.fan_page.set_platform_service(services.get("platform"))
                 self.fan_page.set_power_service(services.get("power"))
@@ -3085,7 +3440,6 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
             self.fan_page.set_dark(self.app_theme == "dark")
             self.fan_page.set_temp_unit(self.temp_unit)
-            self.dashboard_page.set_temp_unit(self.temp_unit)
             if self.performance_mode == "eco":
                 self._set_performance_mode("power-saver")
             elif self.performance_mode == "performance":
@@ -3122,7 +3476,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             except Exception:
                 pass
             self._launcher_timer_id = None
-        for attr in ('dashboard_page', 'lighting_page', 'fan_page'):
+        for attr in ('lighting_page', 'fan_page'):
             page = getattr(self, attr, None)
             if page and hasattr(page, 'cleanup'):
                 try:

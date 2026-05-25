@@ -1,132 +1,109 @@
+# OmenCtl v1.5.0
 
- # OMEN Command Center for Linux v1.4.0 #
 <p align="center">
-  <img src="images/omenapplogo.png" alt="Logo" width="250">
-
-## 📖 About The Project
-<p align="center">
-  <img src="screenshots/start.png" alt="Launcher" width="45%">
-  <img src="screenshots/dash.png" alt="Dashboard" width="45%">
-</p>
-<p align="center">
-  <img src="screenshots/keyboard.png" alt="Keyboard" width="45%">
-  <img src="screenshots/mux.png" alt="MUX Switch" width="45%">
-</p>
-<p align="center">
-  <img src="screenshots/settings.png" alt="Settings" width="45%">
-  <img src="screenshots/performance.png" alt="Performance" width="45%">
+  <img src="images/omenctl.png" alt="OmenCtl Logo" width="180">
 </p>
 
-**OMEN Command Center for Linux** is a native Linux application designed to unlock the full potential of HP Omen and Victus series laptops. It serves as an open-source alternative to the official OMEN Gaming Hub, providing essential controls in a modern, user-friendly interface.
-
-## 🛠️ What's New in v1.4.0?
-
-### 🛡️ Updated Security Architecture
-The application has undergone a comprehensive security audit and refactoring:
-- **Kernel Memory Safety**: Fixed ACPI buffer overflows and uninitialized memory leaks in `hp-wmi` and `hp-rgb-lighting`.
-- **Race Condition Prevention**: Introduced global mutexes to prevent WMI command clobbering between kernel modules.
-- **Strict Least-Privilege**: D-Bus policies now restrict hardware write operations exclusively to `wheel`, `sudo`, and `adm` groups.
-- **Systemd Sandboxing**: Microservices now run without `CAP_SYS_RAWIO`, with protected network and home directories.
-
-### 📚 Comprehensive Documentation
-- Added a full `documentation/` suite covering Architecture, Code Structure, and detailed driver internals.
+<p align="center">
+  <b>⚡ More Modern. More Responsive. Simply Better.</b><br><br>
+  <b>Native, lightweight, and ultra-high-fidelity Linux control center for HP Omen & Victus series laptops.</b><br>
+  An elegant, open-source replacement for the official OMEN Gaming Hub designed for peak performance, extreme customizability, and absolute stability.
+</p>
 
 ---
 
+## 📖 Presentation
 
-## ✨ Features
-
-### 🎨 RGB Lighting Control
-- **4-Zone Control**: Customize colors for different keyboard zones.
-- **Effects**: Static, Breathing, Wave, Cycle.
-- **Brightness & Speed**: Adjustable parameters for dynamic effects.
-- **Low-CPU Wave Engine**: Wave mode CPU usage dropped from ~22-28% to ~2% in stress conditions.
-
-### 📊 System Dashboard
-- **Real-time Monitoring**: CPU/GPU temperatures, fan speeds, battery health.
-- **Performance Profiles**: One-click power profile switching (requires `power-profiles-daemon`).
-
-### 🌪️ Fan Control
-- **Standard Mode**: EC-controlled automatic fan management.
-- **Max Mode**: Forces fans to maximum speed for intensive tasks.
-- **Custom Mode**: Drag-and-drop curve editor to create your own fan profiles.
-
-### 🎮 GPU MUX Switch (BETA)
-- Switch between **Hybrid**, **Discrete**, and **Integrated** modes.
-- Backend can be selected from **Settings → GPU / MUX**.
-- Auto mode prefers `envycontrol` / `supergfxctl` / `prime-select` before HP WMI direct.
-- ⚠️ Some hardware/BIOS combinations may require a reboot.
-
-### ⌨️ Desktop Shortcuts (Recommended)
- To minimize background resource usage, we recommend creating a **Custom Shortcut** in your Desktop Environment settings (GNOME, KDE, etc.):
- - **Command**: `hp-manager`
- - **Shortcut Key**: Your **OMEN Key** (detected as `KEY_PROG2`) or any preferred key combination.
+<p align="center">
+  <img src="screenshots/performancepage.png" alt="Performance Dashboard" width="48%">
+  <img src="screenshots/keyboardlighting.png" alt="Keyboard RGB Lighting" width="48%">
+</p>
+<p align="center">
+  <img src="screenshots/muxpage.png" alt="MUX GPU Switch" width="48%">
+  <img src="screenshots/settingspage.png" alt="Settings & Custom Themes" width="48%">
+</p>
 
 ---
 
-## 🚀 Installation
+> [!NOTE]
+> ### 🌟 Welcome to OmenCtl (v1.5.0 Release)
+> **OmenCtl** (formerly *OMEN Command Center for Linux*) is a completely re-engineered, native control suite built to bridge the gap between official Windows tools and Linux. By combining low-level ACPI/WMI registers with beautiful, modern GTK4 interface designs, OmenCtl gives you full dominion over your laptop.
+> 
+> **Here is what OmenCtl accomplishes for your laptop:**
+> * **🌪️ Silent & Stable Fans:** Re-engineered with a 15-sample moving average and 4°C deadband. Fans react instantly to thermal spikes but stay calm and silent during minor temperature fluctuations. No more constant fan pulsing/revving!
+> * **⚡ Zero-Delay Power Profiles:** Instantly toggle direct hardware power profiles (Saver, Balanced, Performance) without any PolicyKit authentication popups or D-Bus lockups.
+> * **🌈 Zero-overhead Keyboard RGB:** Full hex color zoning and lighting effects utilizing a specialized animation engine that consumes exactly **0% CPU** on static states.
+> * **🎮 Seamless GPU MUX Controls:** Easily switch between Hybrid, Discrete, and Integrated graphics modes with envycontrol, supergfxctl, or prime-select backends.
+> * **📊 Beautiful Telemetry:** Gorgeous radial dials and mechanical meters showing real-time CPU/GPU loads, disk usage, and temperature details.
+
+---
+
+## 🚀 Key Features
+
+### 🌪️ Stable & Silent Fan Control
+* **High-Fidelity Instruments:** Gorgeous mechanical radial speedometer gauges showing real-time CPU/GPU loads, frequencies, fan RPMs, battery status, and disk utilization.
+* **Stable Hysteresis Algorithm:** Re-engineered fan controller with a **15-sample moving average history** and a **4.0°C cooling hysteresis deadband**. The fans react instantly to cool your system but remain locked at speed during slight CPU temperature drops, preventing annoying fan speed pulsing/triggering sounds.
+* **RPM Jitter Filter:** Filters out small speed adjustments under a 400 RPM threshold for quiet, stable acoustics.
+* **Custom Curve Editor:** Precise drag-and-drop spline editor letting you design custom temperature-to-speed curves with interactive grid snap.
+
+### ⚡ WMI Hardware-First Power Profiles
+* **Dynamic hp-wmi Capsule:** The power profiles segment automatically queries your WMI bus and builds buttons matching the exact parameters supported by your laptop (e.g. `power-saver`, `balanced`, `performance`). No hardcoded or mismatched buttons.
+* **Hardware-First Sync:** Queries the direct ACPI/WMI hardware registers (`/sys/firmware/acpi/platform_profile`) as the primary source of truth, guaranteeing instant, uncached profile synchronization.
+* **PPD Polkit-Free Transitions:** Integrated the `powerprofilesctl` tool natively under our root microservice, bypassing complex D-Bus and PolicyKit `AccessDenied` write locks.
+* **cTGP & PPAB Boost paths:** Automatically locks CPU and GPU boost rails (Configurable TGP & PPAB) at the hardware level when performance mode is engaged.
+
+### 🎨 Premium Dynamic Themes
+* **Theme-Adaptive Visuals:** High-contrast Dark and Light modes. Gauges, radial rings, and capsule buttons dynamically invert their colors, tracks, and borders to offer premium visual excellence.
+* **Performance-Reactive Accents:** The global theme accent color reacts dynamically to your active performance profile (glowing emerald for Power Saver, HP red for Balanced, and electric purple for Performance).
+
+### 🌈 RGB Lighting Customization
+* **4-Zone Keyboard Control:** Full hex color customization per zone.
+* **Dazzling Animation Modes:** Static, Breathing, Wave, and Cycle effects.
+* **Zero-CPU Animation Engine:** Parked animations thread locks at exactly **0% CPU** for static colors and uses precise signal polling for active animations to keep your laptop serenely cool.
+
+### 🎮 GPU MUX Switch
+* Seamless graphics mode switching between **Hybrid (Optimus)**, **Discrete (Dedicated GPU)**, and **Integrated (Intel/AMD iGPU)**.
+* Built-in backends supporting `envycontrol`, `supergfxctl`, and `prime-select`.
+
+---
+
+## 💾 Installation & Upgrades
 
 ### Prerequisites
-- A Linux distribution (Ubuntu, Fedora, Arch, OpenSUSE, etc.)
-- `git` installed
+* A compatible Linux distribution (Ubuntu, Fedora, Arch, OpenSUSE, CachyOS, etc.)
+* `git` installed.
 
-### Install
-Open a terminal and run:
-
+### Fresh Install
+Open your terminal and run:
 ```bash
 # Clone the repository
-git clone https://github.com/yunusemreyl/OmenCommandCenterforLinux.git
-cd OmenCommandCenterforLinux
+git clone https://github.com/yunusemreyl/OmenCtl.git
+cd OmenCtl
 
-# Run the installer (requires root)
+# Run the unified installer (requires root)
 chmod +x setup.sh
 sudo ./setup.sh install
 ```
-Note: For compatibility with older documentation, `sudo ./install.sh` redirects to `setup.sh install`.
-Installation Warning ⚠️: We recommend restarting your computer after installation.
 
-### Updating
-
+### Upgrading to v1.5.0
+To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
 ```bash
-cd OmenCommandCenterforLinux
+cd OmenCtl
 git pull
 sudo ./setup.sh update
 ```
+*(The update routine will sturdily stashen your files, pull the latest repo, remove all legacy `omencommandcenterforlinux` leftover links, reload systemd, and cleanly restart the microservices).*
 
-> ⚠️ **Upgrading from v1.3.0 or earlier?** The architecture changed from a single monolithic daemon to microservices. You **must** use `sudo ./setup.sh update` to cleanly remove old services and install the new ones.
-
-### Script Layout
-
-Maintenance scripts are organized under:
-
-- `scripts/fixes/`
-- `scripts/diagnostics/`
-- `scripts/tests/`
-
-Legacy entry points (`fix_hp_wmi.sh`, `fix_omen.sh`, `dump_log.sh`, `test_nvidia.py`) are kept at the repository root as compatibility wrappers.
-
-For OMEN Max 16 / hp-wmi probe troubleshooting, use:
-- `scripts/tests/test_hp_wmi_raw_payload.sh`
-
-The installer will automatically:
-1. Detect your package manager and install dependencies.
-2. Detect your kernel version and install the appropriate driver:
-   - **Kernel ≥ 7.0**: Only installs `hp-rgb-lighting` (RGB). Fan control is provided by the stock `hp-wmi` module.
-     - **Exception**: OMEN Max 16 board `8D41` is forced to the custom `hp-wmi` path due to stock probe incompatibility.
-   - **Kernel < 7.0**: Installs both the custom `hp-wmi` driver (backported) and `hp-rgb-lighting`.
-3. Install the daemon and GUI components.
-4. Set up the 5 microservices.
-
-## 🗑️ Uninstallation
-
-To completely remove the application and its services:
-
+### Uninstallation
+To completely remove OmenCtl and all its services:
 ```bash
-cd OmenCommandCenterforLinux
+cd OmenCtl
 sudo ./setup.sh uninstall
 ```
 
-## 🐧 Compatibility
+---
+
+## 🐧 OS Compatibility
 
 | Distribution | Status | Notes |
 |--------------|--------|-------|
@@ -135,15 +112,43 @@ sudo ./setup.sh uninstall
 | **Arch Linux / CachyOS / Manjaro** | ✅ Verified | Full support via `pacman` |
 | **OpenSUSE Tumbleweed** | ✅ Verified | Full support via `zypper` |
 
+---
 
-## 👨‍💻 Credits & Acknowledgments
-- **Lead Developer**: [yunusemreyl](https://github.com/yunusemreyl)
-- **Kernel Module Development**: Special thanks to **[TUXOV](https://github.com/TUXOV/hp-wmi-fan-and-backlight-control)** for the `hp-wmi-fan-and-backlight-control` driver. Also thanks to **@xcellsior** for the Nvidia Dynamic Boost 80W cap mitigation patch.
+## 👨‍💻 Credits & Contributors
 
-## ⚖️ Legal Disclaimer
-This tool is an independent open-source project developed by **yunusemreyl**.
-It is **NOT** affiliated with or endorsed by **Hewlett-Packard (HP)**.
-The software is provided "as is", without warranty of any kind.
+### 👑 Core Maintainer & Lead Developers
+* **[yunusemreyl](https://github.com/yunusemreyl)** - Lead Developer & Maintainer
+* **[tuxov](https://github.com/tuxov)** - Kernel Module & Patch Lead (Maintainer of the exceptional `hp-wmi-fan-and-backlight-control` kernel driver)
+
+### 🛠️ Pull Request Contributors
+A special thank you to our contributors who have directly submitted code patches and pull requests to improve the codebase:
+
+| PR Contributor | Contribution |
+| :--- | :--- |
+| **[@xcellsior](https://github.com/xcellsior)** | Nvidia Dynamic Boost 80W cap mitigation patch |
+| **[@TitoTFP](https://github.com/TitoTFP)** | Custom fan PWM fallback support (`#66`) |
+| **[@SafSaf0999](https://github.com/SafSaf0999)** | EC register 0x11 fan speed fallback on OMEN 17-cb1xxx (`#31`) |
+| **[@yijean34-source](https://github.com/yijean34-source)** | Test script and troubleshooting documentation (`#74`) |
+
+### 💖 Heartfelt Community Appreciation
+A massive, glowing thank you to all our amazing community members who have opened issues, reported bugs, suggested features, and tested beta updates. Your efforts make **OmenCtl** stable, reliable, and premium!
+
+| Contributor | Contributor | Contributor | Contributor |
+| :--- | :--- | :--- | :--- |
+| **[@reekta92](https://github.com/reekta92)** | **[@brnlsn](https://github.com/brnlsn)** | **[@arjunshinoj](https://github.com/arjunshinoj)** | **[@TitoTFP](https://github.com/TitoTFP)** |
+| **[@dkdue](https://github.com/dkdue)** | **[@siriiuss](https://github.com/siriiuss)** | **[@KursatGirgin](https://github.com/KursatGirgin)** | **[@zeustron](https://github.com/zeustron)** |
+| **[@estrov-s](https://github.com/estrov-s)** | **[@Aegdwyn](https://github.com/Aegdwyn)** | **[@desekilibrio](https://github.com/desekilibrio)** | **[@seeleseelebronya](https://github.com/seeleseelebronya)** |
+| **[@22364yiqun](https://github.com/22364yiqun)** | **[@NullGuardian](https://github.com/NullGuardian)** | **[@zjkhy94](https://github.com/zjkhy94)** | **[@jellotheman](https://github.com/jellotheman)** |
+| **[@cptodix](https://github.com/cptodix)** | **[@ferant2406](https://github.com/ferant2406)** | **[@waheeb4](https://github.com/waheeb4)** | **[@YKangul](https://github.com/YKangul)** |
+| **[@connor2623](https://github.com/connor2623)** | **[@Entharia](https://github.com/Entharia)** | **[@dfshsu](https://github.com/dfshsu)** | **[@babyinlinux](https://github.com/babyinlinux)** |
+| **[@Hakan4178](https://github.com/Hakan4178)** | **[@m24ih](https://github.com/m24ih)** | **[@KuroSeinenbutV2](https://github.com/KuroSeinenbutV2)** | **[@ireneuszi83](https://github.com/ireneuszi83)** |
+| **[@TokynBlast](https://github.com/TokynBlast)** | **[@DanielAugustJanson](https://github.com/DanielAugustJanson)** | **[@Ja4e](https://github.com/Ja4e)** | |
+
+*And to every developer, tester, and supporter in the open-source community!*
 
 ---
-*Developed with ❤️ by yunusemreyl*
+
+## ⚖️ Legal Disclaimer
+OmenCtl is an independent open-source project developed by **yunusemreyl** and is **NOT** officially affiliated with, authorized, or endorsed by **Hewlett-Packard (HP)**. All product names, logos, and brands are property of their respective owners.
+
+*Developed with ❤️ by yunusemreyl & Contributors*

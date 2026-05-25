@@ -1,6 +1,6 @@
-# OMEN Command Center for Linux - Documentation
+# OmenCtl - Developer Documentation
 
-Welcome to the official developer documentation for the OMEN Command Center for Linux. This project is designed to bring native, hardware-level control for HP OMEN and Victus laptops to Linux, prioritizing a zero-trust security architecture, modularity, and high performance.
+Welcome to the official developer documentation for OmenCtl. This project is designed to bring native, hardware-level control for HP OMEN and Victus laptops to Linux, prioritizing a zero-trust security architecture, modularity, and high performance.
 
 ## Table of Contents
 

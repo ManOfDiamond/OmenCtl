@@ -5,14 +5,15 @@
 set -euo pipefail
 
 # --- CONFIGURATION ---
-APP_NAME="OMEN Command Center for Linux"
+APP_NAME="OmenCtl"
 INSTALL_DIR="/usr/libexec/hp-manager"
 DATA_DIR="/usr/share/hp-manager"
 BIN_LINK="/usr/bin/hp-manager"
+OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.4.0"
+VERSION="1.5.0"
 
 # Colors
 RED='\033[0;31m'
@@ -460,10 +461,10 @@ _setup_omen_key_gnome() {
     fi
 
     runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "${new_val}" 2>/dev/null
-    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} name 'OMEN Command Center' 2>/dev/null
-    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} command 'hp-manager' 2>/dev/null
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} name 'OmenCtl' 2>/dev/null
+    runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} command 'omenctl' 2>/dev/null
     runuser -u "$user" -- gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:${omen_path} binding 'Launch2' 2>/dev/null \
-        && log "Omen Key shortcut set for GNOME (Launch2 → hp-manager)" \
+        && log "Omen Key shortcut set for GNOME (Launch2 → omenctl)" \
         || warn "Failed to set GNOME shortcut — you can set it manually in Settings → Keyboard → Shortcuts"
 }
 
@@ -490,22 +491,22 @@ _setup_omen_key_kde() {
     fi
 
     if [ -n "$kwrite" ]; then
-        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_launch' 'Launch2,none,OMEN Command Center' 2>/dev/null || true
-        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_k_friendly_name' 'OMEN Command Center' 2>/dev/null || true
+        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_launch' 'Launch2,none,OmenCtl' 2>/dev/null || true
+        runuser -u "$user" -- ${kwrite} --file kglobalshortcutsrc --group 'omen-command-center.desktop' --key '_k_friendly_name' 'OmenCtl' 2>/dev/null || true
         if command -v qdbus6 &>/dev/null; then
             runuser -u "$user" -- qdbus6 org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig 2>/dev/null || true
         elif command -v qdbus &>/dev/null; then
             runuser -u "$user" -- qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig 2>/dev/null || true
         fi
-        log "Omen Key shortcut set for KDE Plasma (Launch2 → hp-manager)" \
+        log "Omen Key shortcut set for KDE Plasma (Launch2 → omenctl)" \
             || warn "Failed to set KDE shortcut — set it in System Settings → Shortcuts"
     else
         # Direct file write as fallback
         cat >> "$rc_file" <<'KDE_SHORTCUT'
 
 [omen-command-center.desktop]
-_launch=Launch2,none,OMEN Command Center
-_k_friendly_name=OMEN Command Center
+_launch=Launch2,none,OmenCtl
+_k_friendly_name=OmenCtl
 KDE_SHORTCUT
         chown "$user":"$user" "$rc_file" 2>/dev/null || true
         log "Omen Key shortcut written to kglobalshortcutsrc"
@@ -516,9 +517,9 @@ KDE_SHORTCUT
     runuser -u "$user" -- mkdir -p "${desktop_dir}" 2>/dev/null || true
     cat > "${desktop_dir}/omen-command-center.desktop" <<DESKTOP
 [Desktop Entry]
-Name=OMEN Command Center
-Exec=hp-manager
-Icon=omenapplogo
+Name=OmenCtl
+Exec=omenctl
+Icon=omenctl
 Type=Application
 Categories=System;Settings;
 DESKTOP
@@ -528,8 +529,8 @@ DESKTOP
 _setup_omen_key_xfce() {
     local user=$1
 
-    runuser -u "$user" -- xfconf-query -c xfce4-keyboard-shortcuts -p '/commands/custom/XF86Launch2' -n -t string -s 'hp-manager' 2>/dev/null \
-        && log "Omen Key shortcut set for XFCE (XF86Launch2 → hp-manager)" \
+    runuser -u "$user" -- xfconf-query -c xfce4-keyboard-shortcuts -p '/commands/custom/XF86Launch2' -n -t string -s 'omenctl' 2>/dev/null \
+        && log "Omen Key shortcut set for XFCE (XF86Launch2 → omenctl)" \
         || warn "Failed to set XFCE shortcut — set it in Settings → Keyboard → Application Shortcuts"
 }
 
@@ -538,10 +539,10 @@ _setup_omen_key_cinnamon() {
     local base_path="/org/cinnamon/desktop/keybindings/custom-keybindings"
     local omen_path="${base_path}/omen-key/"
 
-    runuser -u "$user" -- dconf write ${omen_path}name "'OMEN Command Center'" 2>/dev/null || true
-    runuser -u "$user" -- dconf write ${omen_path}command "'hp-manager'" 2>/dev/null || true
+    runuser -u "$user" -- dconf write ${omen_path}name "'OmenCtl'" 2>/dev/null || true
+    runuser -u "$user" -- dconf write ${omen_path}command "'omenctl'" 2>/dev/null || true
     runuser -u "$user" -- dconf write ${omen_path}binding "['Launch2']" 2>/dev/null \
-        && log "Omen Key shortcut set for Cinnamon (Launch2 → hp-manager)" \
+        && log "Omen Key shortcut set for Cinnamon (Launch2 → omenctl)" \
         || warn "Failed to set Cinnamon shortcut — set it in Keyboard → Shortcuts"
 }
 
@@ -553,12 +554,12 @@ _setup_omen_key_fallback() {
     # Check if xbindkeys is available
     if ! command -v xbindkeys &>/dev/null; then
         info "Omen Key: Unknown DE and xbindkeys not installed."
-        info "To bind the OMEN key manually, map XF86Launch2 to 'hp-manager' in your DE's shortcut settings."
+        info "To bind the OMEN key manually, map XF86Launch2 to 'omenctl' in your DE's shortcut settings."
         return
     fi
 
     # Check if already configured
-    if [ -f "$xbindkeys_conf" ] && grep -q "hp-manager" "$xbindkeys_conf" 2>/dev/null; then
+    if [ -f "$xbindkeys_conf" ] && grep -q "omenctl" "$xbindkeys_conf" 2>/dev/null; then
         info "Omen Key shortcut already configured in xbindkeys"
         return
     fi
@@ -566,12 +567,12 @@ _setup_omen_key_fallback() {
     # Append binding
     cat >> "$xbindkeys_conf" <<'XBIND'
 
-# OMEN Command Center key (auto-generated)
-"hp-manager"
+# OmenCtl key (auto-generated)
+"omenctl"
     XF86Launch2
 XBIND
     chown "$user":"$user" "$xbindkeys_conf" 2>/dev/null || true
-    log "Omen Key shortcut added to ~/.xbindkeysrc (XF86Launch2 → hp-manager)"
+    log "Omen Key shortcut added to ~/.xbindkeysrc (XF86Launch2 → omenctl)"
     info "Run 'xbindkeys' to activate, or add it to your session autostart."
 }
 
@@ -608,6 +609,10 @@ do_install() {
     # Images (non-fatal if missing)
     if [ -d "images" ] && [ -n "$(ls -A images 2>/dev/null)" ]; then
         cp images/* "$DATA_DIR/images/"
+        if [ -f "images/omenctl.png" ]; then
+            mkdir -p /usr/share/icons/hicolor/48x48/apps
+            cp images/omenctl.png /usr/share/icons/hicolor/48x48/apps/omenctl.png
+        fi
         log "$(msg images_copied)"
     else
         warn "No images directory found — skipping image copy."
@@ -620,6 +625,7 @@ cd /usr/share/hp-manager/gui
 exec python3 /usr/share/hp-manager/gui/main_window.py "$@"
 LAUNCHER
     chmod +x "$BIN_LINK"
+    ln -sf "$BIN_LINK" "$OMENCTL_LINK"
 
     # CLI link
     ln -sf "$INSTALL_DIR/omen-cli.py" "$CLI_LINK"
@@ -663,6 +669,7 @@ fi
 INSTALL_DIR="/usr/libexec/hp-manager"
 DATA_DIR="/usr/share/hp-manager"
 BIN_LINK="/usr/bin/hp-manager"
+OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 
@@ -678,6 +685,7 @@ echo "Removing files..."
 rm -f /etc/systemd/system/hp-manager.service
 rm -f /etc/systemd/system/com.yyl.hpmanager.service
 rm -f "$BIN_LINK"
+rm -f "$OMENCTL_LINK"
 rm -f "$CLI_LINK"
 rm -rf "$INSTALL_DIR"
 rm -rf "$DATA_DIR"
@@ -688,7 +696,7 @@ for svc in fan rgb power mux platform; do
     rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
 done
 rm -f /usr/share/applications/com.yyl.hpmanager.desktop
-rm -f /usr/share/icons/hicolor/48x48/apps/omenapplogo.png
+rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
 rm -f /etc/modules-load.d/hp-rgb-lighting.conf
 rm -f /etc/modules-load.d/hp-wmi.conf
 
@@ -729,6 +737,7 @@ do_uninstall() {
     rm -f /etc/systemd/system/hp-manager.service
     rm -f /etc/systemd/system/com.yyl.hpmanager.service
     rm -f "$BIN_LINK"
+    rm -f "$OMENCTL_LINK"
     rm -f "$CLI_LINK"
     rm -f "$UNINSTALLER_LINK"
     rm -rf "$INSTALL_DIR"
@@ -740,7 +749,7 @@ do_uninstall() {
         rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
     done
     rm -f /usr/share/applications/com.yyl.hpmanager.desktop
-    rm -f /usr/share/icons/hicolor/48x48/apps/omenapplogo.png
+    rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
     rm -f /etc/modules-load.d/hp-rgb-lighting.conf
     rm -f /etc/modules-load.d/hp-wmi.conf
 
@@ -752,6 +761,18 @@ do_uninstall() {
 do_update() {
     check_root
     info "$(msg updating)"
+
+    # Clean legacy remnants of OmenCommandCenterforLinux (legacy OmenCtl) / hp-manager
+    info "Cleaning legacy OMEN Command Center remnants..."
+    rm -rf /usr/libexec/omen-command-center \
+           /etc/omen-command-center \
+           /usr/share/omen-command-center \
+           /usr/bin/omen-command-center \
+           /etc/dbus-1/system.d/com.yyl.omen-command-center.conf \
+           /etc/systemd/system/omen-command-center.service \
+           /usr/share/applications/com.yyl.omen-command-center.desktop \
+           /usr/share/applications/omen-command-center.desktop \
+           2>/dev/null || true
 
     if [ -d ".git" ]; then
         info "Pulling latest changes..."
@@ -786,7 +807,18 @@ case "${1}" in
     install)        do_install ;;
     uninstall)      do_uninstall ;;
     update)         do_update ;;
-    _update_apply)  do_uninstall; do_install; log "$(msg updated)" ;;
+    _update_apply)  
+        # Clean legacy remnants of OmenCommandCenterforLinux (legacy OmenCtl) / hp-manager
+        rm -rf /usr/libexec/omen-command-center \
+               /etc/omen-command-center \
+               /usr/share/omen-command-center \
+               /usr/bin/omen-command-center \
+               /etc/dbus-1/system.d/com.yyl.omen-command-center.conf \
+               /etc/systemd/system/omen-command-center.service \
+               /usr/share/applications/com.yyl.omen-command-center.desktop \
+               /usr/share/applications/omen-command-center.desktop \
+               2>/dev/null || true
+        do_uninstall; do_install; log "$(msg updated)" ;;
     -h|--help)
         msg usage
         echo "Options: install, uninstall, update"

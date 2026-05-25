@@ -84,6 +84,12 @@ class PowerProfileController:
         if not self.available:
             return "balanced"
         try:
+            # First, check direct WMI/ACPI platform profile as it is the absolute source of truth!
+            wmi_active = self._get_omen_direct_active()
+            if wmi_active is not None:
+                return wmi_active
+
+            # Fallback to ppd / tuned
             if self.mode == "ppd":
                 return self.proxy.ActiveProfile
             if self.mode == "tuned":
@@ -93,18 +99,19 @@ class PowerProfileController:
                 if "performance" in tp:
                     return "performance"
                 return "balanced"
-            # omen_direct
-            return self._get_omen_direct_active()
+            return "balanced"
         except Exception:
             return "balanced"
 
     def _get_omen_direct_active(self):
+        found = False
         for path in (
             "/sys/firmware/acpi/platform_profile",
             "/sys/devices/platform/hp-wmi/platform_profile",
         ):
             if not sysfs_exists(path):
                 continue
+            found = True
             normalized = normalize_profile_name(sysfs_read_str(path, "balanced"))
             if "performance" in normalized:
                 return "performance"
@@ -118,12 +125,13 @@ class PowerProfileController:
         ):
             if not sysfs_exists(path):
                 continue
+            found = True
             val = sysfs_read(path, THERMAL_PROFILE_BALANCED)
             if val == 1:
                 return "performance"
             return "balanced"
 
-        return "balanced"
+        return None if not found else "balanced"
 
     def _sync_omen_profile(self, profile):
         target_candidates = {
@@ -173,7 +181,19 @@ class PowerProfileController:
             return False
         try:
             if self.mode == "ppd":
-                self.proxy.ActiveProfile = profile
+                if shutil.which("powerprofilesctl"):
+                    try:
+                        res = subprocess.run(["powerprofilesctl", "set", profile], capture_output=True, text=True, timeout=2.0)
+                        if res.returncode == 0:
+                            logger.info("Successfully set ppd profile via powerprofilesctl: %s", profile)
+                        else:
+                            logger.warning("powerprofilesctl set returned non-zero: %s (stderr: %s), falling back to direct dbus", res.returncode, res.stderr)
+                            self.proxy.ActiveProfile = profile
+                    except Exception as e:
+                        logger.warning("Failed to run powerprofilesctl set: %s, falling back to direct dbus", e)
+                        self.proxy.ActiveProfile = profile
+                else:
+                    self.proxy.ActiveProfile = profile
             elif self.mode == "tuned":
                 mapping = {
                     "power-saver": "powersave",

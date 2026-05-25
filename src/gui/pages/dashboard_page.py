@@ -349,17 +349,16 @@ class DashboardPage(Gtk.Box):
         self.append(scroll)
         self._root_box = root
 
-        top_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        top_card.add_css_class("card")
-        top_card.append(self._heading(T("sys_info")))
-        top_card.append(Gtk.Separator())
+        heading_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        heading_box.append(self._heading(T("sys_info")))
+        heading_box.append(Gtk.Separator())
+        root.append(heading_box)
 
         top_row = Gtk.Box(spacing=18, homogeneous=True)
-        top_row.append(self._mk_quick_status(embedded=True))
-        top_row.append(self._mk_resources(embedded=True))
-        top_card.append(top_row)
+        top_row.append(self._mk_quick_status(embedded=False))
+        top_row.append(self._mk_resources(embedded=False))
         self._top_row = top_row
-        root.append(top_card)
+        root.append(top_row)
 
     def set_ui_scale(self, bucket, _width=0, _height=0):
         root = getattr(self, "_root_box", None)
@@ -721,6 +720,13 @@ class DashboardPage(Gtk.Box):
                         d["fan"] = json.loads(raw)
             except Exception: pass
 
+            try:
+                if "power" in self.services and self.services["power"]:
+                    raw = _dbus_call(self.services["power"].GetPowerProfile)
+                    if raw is not None:
+                        d["power"] = json.loads(raw)
+            except Exception: pass
+
         # ── CPU/GPU temp — prefer daemon values for consistency with fan page ─
         si = d.get("sys", {})
         d["cpu_temp"] = si.get("cpu_temp", 0)
@@ -822,6 +828,18 @@ class DashboardPage(Gtk.Box):
             except Exception:
                 pass
 
+        # ── Power conflict check ──────────────────────────────────────────
+        conflict = None
+        for tool in ("tlp", "auto-cpufreq"):
+            try:
+                res = subprocess.run(["systemctl", "is-active", f"{tool}.service"],
+                                     capture_output=True, text=True, timeout=1.0)
+                if res.stdout.strip() == "active":
+                    conflict = tool
+                    break
+            except Exception: pass
+        d["power_conflict"] = conflict
+
         self._data = d
         GLib.idle_add(self._apply)
 
@@ -858,6 +876,31 @@ class DashboardPage(Gtk.Box):
             self._cpu_pct_lbl.set_label(f"{int(cpu_pct)}%")
         self._disk_chart.set_value(d.get("disk_pct", 0.0))
         self._ram_chart.set_value(d.get("ram_pct", 0.0))
+
+        # Performance Mode Sync
+        power_profile = d.get("power", {})
+        active_p = power_profile.get("active", "")
+        if active_p:
+            ui_mode = "balanced"
+            if active_p == "power-saver":
+                ui_mode = "eco"
+            elif active_p == "performance":
+                ui_mode = "performance"
+            
+            if ui_mode in self._perf_btns:
+                btn = self._perf_btns[ui_mode]
+                if not btn.get_active():
+                    self._block_perf_sync = True
+                    btn.set_active(True)
+                    self._block_perf_sync = False
+
+        # Conflict check
+        conflict = d.get("power_conflict")
+        if conflict:
+            self._conflict_lbl.set_markup(f"⚠️ <b>Conflict Detected:</b> {conflict}.service is running, which may override OmenCtl.")
+            self._conflict_lbl.set_visible(True)
+        else:
+            self._conflict_lbl.set_visible(False)
 
         fan = d.get("fan", {})
         fm = fan.get("mode", "auto").capitalize()
