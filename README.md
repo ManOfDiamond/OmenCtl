@@ -97,6 +97,18 @@
 * A compatible Linux distribution (Ubuntu, Fedora, Arch, OpenSUSE, CachyOS, etc.)
 * `git` installed.
 
+---
+> [!NOTE]
+>### Upgrading to v1.5.0
+>To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
+>```bash
+>git clone https://github.com/yunusemreyl/OmenCtl.git
+>cd OmenCtl
+>git pull
+>sudo ./setup.sh update
+>```
+>*(The update routine will sturdily stashen your files, pull the latest repo, remove all legacy `omencommandcenterforlinux` leftover links, reload systemd, and cleanly restart the microservices).*
+---
 ### Fresh Install
 Open your terminal and run:
 ```bash
@@ -108,16 +120,6 @@ cd OmenCtl
 chmod +x setup.sh
 sudo ./setup.sh install
 ```
-
-### Upgrading to v1.5.0
-To upgrade your current installation, clean up legacy remnants, and load the new optimized permissions:
-```bash
-git clone https://github.com/yunusemreyl/OmenCtl.git
-cd OmenCtl
-git pull
-sudo ./setup.sh update
-```
-*(The update routine will sturdily stashen your files, pull the latest repo, remove all legacy `omencommandcenterforlinux` leftover links, reload systemd, and cleanly restart the microservices).*
 
 ### Uninstallation
 To completely remove OmenCtl and all its services:
