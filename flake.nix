@@ -26,7 +26,7 @@
         {
           omenctl = pkgs.stdenv.mkDerivation {
             pname = "omenctl";
-            version = "1.5.3";
+            version = "1.6.0-preview";
 
             src = ./.;
 
@@ -144,7 +144,7 @@
             boot.extraModulePackages = lib.mkIf cfg.loadCustomDriver [
               (config.boot.kernelPackages.kernel.stdenv.mkDerivation {
                 pname = "omenctl-driver";
-                version = "1.5.3";
+                version = "1.6.0-preview";
                 src = "${self.packages.${pkgs.system}.omenctl.src}/driver";
                 
                 nativeBuildInputs = config.boot.kernelPackages.kernel.moduleBuildDependencies;

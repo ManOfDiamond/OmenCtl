@@ -60,6 +60,37 @@ sudo ./setup.sh install
 ```
 *(To perform an upgrade without losing configuration, run `sudo ./setup.sh update`)*
 
+### NixOS Installation (Flake)
+OmenCtl comes with built-in Nix Flake support and a dedicated NixOS module that automatically handles packages, D-Bus policies, Systemd microservices, and out-of-tree kernel modules!
+
+1. Add OmenCtl to your `flake.nix` inputs:
+```nix
+inputs = {
+  nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  omenctl.url = "github:yunusemreyl/OmenCtl";
+  omenctl.inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+2. Import the module in your `nixosConfigurations`:
+```nix
+outputs = { self, nixpkgs, omenctl, ... }: {
+  nixosConfigurations.my-laptop = nixpkgs.lib.nixosSystem {
+    system = "x86_64-linux";
+    modules = [
+      ./configuration.nix
+      omenctl.nixosModules.default
+    ];
+  };
+};
+```
+3. Enable OmenCtl in your `configuration.nix`:
+```nix
+programs.omenctl = {
+  enable = true;
+  loadCustomDriver = true; # Loads the custom hp-wmi and hp-rgb-lighting kernel modules
+};
+```
+
 ### Uninstallation
 To completely remove OmenCtl and all its services:
 ```bash
