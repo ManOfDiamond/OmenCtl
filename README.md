@@ -148,6 +148,11 @@ A massive thank you to all our amazing community members who have opened issues,
 
 ---
 
+## 📄 License
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](LICENSE) file for details.
+
+---
+
 ## ⚖️ Legal Disclaimer
 OmenCtl is an independent open-source project developed by **yunusemreyl** and is **NOT** officially affiliated with, authorized, or endorsed by **Hewlett-Packard (HP)**. All product names, logos, and brands are property of their respective owners.
 
