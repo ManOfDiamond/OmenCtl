@@ -77,6 +77,16 @@
 * **PPD Polkit-Free Transitions:** Integrated the `powerprofilesctl` tool natively under our root microservice, bypassing complex D-Bus and PolicyKit `AccessDenied` write locks.
 * **cTGP & PPAB Boost rails:** Automatically locks CPU and GPU boost rails (Configurable TGP & PPAB) at the hardware level when performance mode is engaged.
 
+### 🎮 Unified Application & Game Profiles
+* **Launcher-Agnostic Profile Mapping:** Set custom power and fan profiles for specific games and apps without them replacing or overwriting each other.
+* **Auto-Detection Daemon Scanner:** The system monitor daemon dynamically scans active processes' environments (e.g., `/proc/<pid>/environ`) to detect games running via major Linux launchers and managers:
+  * 🖥️ **Steam** (native / Proton)
+  * 📦 **Flatpak**
+  * ⚡ **Snap**
+  * 🍷 **Lutris**
+  * 🛡️ **Heroic Games Launcher**
+* **Generic URI Exec Parser:** Automatically extracts unique application slugs from desktop entries and execution commands (like `steam://rungameid/`, `flatpak run`, etc.) to uniquely identify every profile without hardcoding.
+
 ### 🎨 Premium Dynamic Themes
 * **Theme-Adaptive Visuals:** High-contrast Dark and Light modes. Gauges, radial rings, and capsule buttons dynamically invert their colors, tracks, and borders to offer premium visual excellence.
 * **Performance-Reactive Accents:** The global theme accent color reacts dynamically to your active performance profile (glowing emerald for Power Saver, HP red for Balanced, and electric purple for Performance).
@@ -131,6 +141,25 @@ sudo ./setup.sh uninstall
 
 ---
 
+## 💻 Hardware & Model Support
+
+OmenCtl detects and manages HP's proprietary WMI system interfaces, supporting a wide range of HP gaming laptops.
+
+### 🏢 Supported Product Families & Models
+* **HP OMEN 15** (e.g., `15-dhxxxx`, `15-ekxxxx`, `15-enxxxx` series)
+* **HP OMEN 16** (e.g., `16-bxxxxx`, `16-cxxxxx`, `16-kxxxxx`, `16-nxxxxx`, `16-wfxxxx`, `16-xdxxxx` series)
+* **HP OMEN 17** (e.g., `17-cbxxxx`, `17-ckxxxx`, `17-cmxxxx` series)
+* **HP OMEN Transcend 14 & 16** (e.g., `14-fbxxxx`, `16-u0xxxx` series)
+* **HP Victus 15** (e.g., `15-fa0xxx`, `15-fb0xxx` series)
+* **HP Victus 16** (e.g., `16-d0xxxx`, `16-e0xxxx`, `16-r0xxxx`, `16-s0xxxx` series)
+
+### ⚙️ Hardware Capabilities Supported
+* **Processors (CPUs):** Full performance scaling and telemetry mapping for **Intel Core** (10th Gen through Core Ultra) and **AMD Ryzen** (4000 through 8000/9000 Series).
+* **Graphics (GPUs):** Telemetry tracking and MUX switching for **NVIDIA GeForce RTX** (20, 30, 40 Series), **AMD Radeon** RX series, and **Intel Arc/Iris Xe**.
+* **Thermal Controller:** Full compatibility with WMI-driven platform profiles via the `hp-wmi` kernel module, enabling fan curves, boost management, and power limits override.
+
+---
+
 ## 🐧 OS Compatibility
 
 | Distribution | Status | Notes |
@@ -153,6 +182,7 @@ A special thank you to our contributors who have directly submitted code patches
 
 | PR Contributor | Contribution |
 | :--- | :--- |
+| **[@CodesRahul96](https://github.com/CodesRahul96)** | Contributed Application Profiles, Victus fixes, and Hindi localization |
 | **[@xcellsior](https://github.com/xcellsior)** | Nvidia Dynamic Boost 80W cap mitigation patch |
 | **[@TitoTFP](https://github.com/TitoTFP)** | Custom fan PWM fallback support (`#66`) |
 | **[@SafSaf0999](https://github.com/SafSaf0999)** | EC register 0x11 fan speed fallback on OMEN 17-cb1xxx (`#31`) |

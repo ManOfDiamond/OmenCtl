@@ -40,13 +40,25 @@ class RGBController:
         self.available = self.driver_path is not None
         self.last_written = [None] * 8
         self.reversed = True
+        self.unsupported = False
         self._fds: typing.Dict[int, typing.IO] = {}
         if self.available:
             for i in range(8):
                 try:
-                    self._fds[i] = open(f"{self.driver_path}/zone{i}", "w")
+                    path = f"{self.driver_path}/zone{i}"
+                    if os.path.exists(path):
+                        self._fds[i] = open(path, "w")
                 except Exception:
                     pass
+            if not self._fds:
+                self.unsupported = True
+            else:
+                try:
+                    with open(f"{self.driver_path}/zone0", "r") as f:
+                        if f.read().strip() == "000000":
+                            self.unsupported = True
+                except Exception:
+                    self.unsupported = True
 
     def _find_rgb_path(self):
         if os.path.exists(DRIVER_PATH_CUSTOM):
@@ -395,7 +407,9 @@ class RGBService:
         return "OK"
 
     def GetState(self):
-        return json.dumps(self._config.snapshot())
+        snap = self._config.snapshot()
+        snap["unsupported"] = getattr(self._rgb, "unsupported", False)
+        return json.dumps(snap)
 
     def SetWinLock(self, locked):
         logger.info("SetWinLock: %s", "LOCKED" if locked else "UNLOCKED")

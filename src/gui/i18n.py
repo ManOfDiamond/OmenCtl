@@ -31,7 +31,7 @@ TRANSLATIONS = {
         # Nav
         "fan": "Performans",
         "lighting": "Aydınlatma", "mux": "MUX", "settings": "Ayarlar",
-        "keyboard": "Kısayollar",
+        "keyboard": "Kısayollar", "app_profiles": "Uygulama Profilleri",
         # Fan page
         "fan_control": "Fan Kontrolü", "system_status": "SİSTEM DURUMU",
         "power_profile": "GÜÇ PROFİLİ", "fan_mode": "FAN MODU",
@@ -133,12 +133,22 @@ TRANSLATIONS = {
         "performance_tooltip": "Tüm limitleri kaldırır ve en yüksek performansı almanızı sağlar.",
         "power_managed_by": "Güç modu {tool} tarafından yönetilmektedir.",
 
+        # App Profiles
+        "app_profiles_desc": "Oyun veya uygulama çalıştığında güç profili otomatik değişir.",
+        "add": "Ekle", "delete": "Sil",
+        "placeholder_app": "Uygulama adı (Örn: steam, cs2.exe, studio)",
+        "game": "Oyun", "program": "Program", "other": "Diğer",
+        "fan_default": "Fan: Varsayılan", "fan_auto": "Fan: Otomatik", "fan_max": "Fan: Maksimum",
+        "theme_default": "Tema: Varsayılan", "theme_dark": "Tema: Koyu", "theme_light": "Tema: Açık",
+        "theme_label": "Uygulama açıldığında tema değiştir",
+        "no_profiles": "Henüz bir uygulama profili eklenmedi.",
+
     },
     "en": {
         # Nav
         "fan": "Performance",
         "lighting": "Lighting", "mux": "MUX", "settings": "Settings",
-        "keyboard": "Shortcuts",
+        "keyboard": "Shortcuts", "app_profiles": "App Profiles",
         # Fan page
         "fan_control": "Fan Control", "system_status": "SYSTEM STATUS",
         "power_profile": "POWER PROFILE", "fan_mode": "FAN MODE",
@@ -239,6 +249,16 @@ TRANSLATIONS = {
         "balanced_tooltip": "Balance between power and efficiency.",
         "performance_tooltip": "Remove all power limits for maximum performance.",
         "power_managed_by": "Power mode is managed by {tool}.",
+
+        # App Profiles
+        "app_profiles_desc": "Automatically switch power profile when an app or game is launched.",
+        "add": "Add", "delete": "Delete",
+        "placeholder_app": "App name (e.g. steam, cs2.exe, studio)",
+        "game": "Game", "program": "Program", "other": "Other",
+        "fan_default": "Fan: Default", "fan_auto": "Fan: Auto", "fan_max": "Fan: Max",
+        "theme_default": "Theme: Default", "theme_dark": "Theme: Dark", "theme_light": "Theme: Light",
+        "theme_label": "Switch theme when application starts",
+        "no_profiles": "No app profiles added yet.",
     },
 }
 

@@ -53,6 +53,7 @@ from pages.lighting_page import LightingPage
 from pages.mux_page import MUXPage
 from pages.settings_page import SettingsPage
 from pages.keyboard_page import KeyboardPage
+from pages.app_profiles_page import AppProfilesPage
 
 APP_VERSION = "1.5.3"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
@@ -235,6 +236,21 @@ class FixedMenuIcon(Gtk.DrawingArea):
             cr.stroke()
             return
 
+        if kind == "app_profiles":
+            cx, cy = w / 2, h / 2
+            r = min(w, h) * 0.26
+            cr.arc(cx, cy, r, 0, 2 * 3.14159)
+            cr.stroke()
+            cr.rectangle(cx - r*0.4, cy - r*0.4, r*0.8, r*0.8)
+            cr.stroke()
+            cr.move_to(cx - r*1.2, cy)
+            cr.line_to(cx - r*0.7, cy)
+            cr.stroke()
+            cr.move_to(cx + r*0.7, cy)
+            cr.line_to(cx + r*1.2, cy)
+            cr.stroke()
+            return
+
         if kind == "settings":
             cx, cy = w / 2, h / 2
             r = min(w, h) * 0.24
@@ -312,6 +328,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "fan": T("fan"),
             "lighting": T("lighting"),
             "keyboard": T("keyboard"),
+            "app_profiles": T("app_profiles"),
             "mux": "MUX",
             "settings": T("settings"),
         }
@@ -2086,6 +2103,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         nav_items = [
             ("fan",       self.page_titles["fan"],       "weather-tornado-symbolic"),
             ("lighting",  self.page_titles["lighting"],  "lightbulb-symbolic"),
+            ("keyboard",  self.page_titles["keyboard"],  "input-keyboard-symbolic"),
+            ("app_profiles", self.page_titles["app_profiles"], "preferences-system-symbolic"),
             ("mux",       "MUX",                        "video-display-symbolic"),
         ]
 
@@ -2268,6 +2287,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
         self.lighting_page   = LightingPage(service=None)
         self.keyboard_page   = KeyboardPage(service=None)
+        self.app_profiles_page = AppProfilesPage(service=None)
         self.mux_page        = MUXPage(service=None)
         self.settings_page   = SettingsPage(
             on_theme_change=self._on_theme_change,
@@ -2280,6 +2300,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
         self.stack.add_named(self.fan_page,        "fan")
         self.stack.add_named(self.lighting_page,   "lighting")
         self.stack.add_named(self.keyboard_page,   "keyboard")
+        self.stack.add_named(self.app_profiles_page, "app_profiles")
         self.stack.add_named(self.mux_page,        "mux")
         self.stack.add_named(self.settings_page,   "settings")
 
@@ -2395,6 +2416,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "fan": "Fan, güç ve termal profiller",
             "lighting": "Aydınlatma efektleri ve parlaklık",
             "keyboard": "Özel tuşlar ve kısayollar",
+            "app_profiles": "Oyun ve uygulamalara özel güç modları",
             "mux": "GPU geçiş modu ve sürücü",
             "settings": "Tema, dil ve uygulama ayarları",
         }
@@ -2403,6 +2425,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "fan": "Fan, power and thermal profiles",
             "lighting": "Lighting effects and brightness",
             "keyboard": "Special keys and shortcuts",
+            "app_profiles": "Per-app power and fan profiles",
             "mux": "GPU switching mode and driver",
             "settings": "Theme, language and app settings",
         }
@@ -2413,6 +2436,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             ("fan", self.page_titles["fan"], "fan"),
             ("lighting", self.page_titles["lighting"], "lighting"),
             ("keyboard", self.page_titles["keyboard"], "keyboard"),
+            ("app_profiles", self.page_titles["app_profiles"], "app_profiles"),
             ("mux", "MUX", "mux"),
             ("settings", self.page_titles["settings"], "settings"),
         ]
@@ -2488,7 +2512,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             target.add_css_class(target_cls)
 
         self._apply_home_scale(bucket)
-        for page_attr in ("fan_page", "lighting_page", "keyboard_page", "mux_page", "settings_page"):
+        for page_attr in ("fan_page", "lighting_page", "keyboard_page", "app_profiles_page", "mux_page", "settings_page"):
             page = getattr(self, page_attr, None)
             if page and hasattr(page, "set_ui_scale"):
                 try:
@@ -2981,6 +3005,8 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.lighting_page.set_service(self.services["rgb"])
             if hasattr(self, 'keyboard_page'):
                 self.keyboard_page.set_service(self.services["platform"])
+            if hasattr(self, 'app_profiles_page'):
+                self.app_profiles_page.set_power_service(self.services["power"])
             self.mux_page.set_service(self.services["mux"])
             self.settings_page.set_service(self.services["mux"])
             print("Daemon connected")
@@ -3048,6 +3074,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             "fan": T("fan"),
             "lighting": T("lighting"),
             "keyboard": T("keyboard"),
+            "app_profiles": T("app_profiles"),
             "mux": "MUX",
             "settings": T("settings"),
         }
@@ -3372,6 +3399,14 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             keyboard["metric_sub"].set_label("Varsayılan" if get_lang() == "tr" else "Default")
             self._set_launcher_badge("keyboard", False)
 
+        app_profiles = self._launcher_cards.get("app_profiles")
+        if app_profiles:
+            is_tr = get_lang() == "tr"
+            enabled = ppi.get("app_profiles_enabled", False)
+            app_profiles["metric_main"].set_label(("Aktif" if enabled else "Kapalı") if is_tr else ("Active" if enabled else "Inactive"))
+            app_profiles["metric_sub"].set_label("Otomatik" if is_tr else "Auto")
+            self._set_launcher_badge("app_profiles", False)
+
         settings = self._launcher_cards.get("settings")
         if settings:
             settings["metric_main"].set_label("OK" if ok else "Offline")
@@ -3403,7 +3438,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                 if page and hasattr(page, 'cleanup'):
                     page.cleanup()
 
-            for name in ("home", "fan", "lighting", "keyboard", "mux", "settings"):
+            for name in ("home", "fan", "lighting", "keyboard", "app_profiles", "mux", "settings"):
                 child = self.stack.get_child_by_name(name)
                 if child:
                     self.stack.remove(child)
@@ -3412,6 +3447,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.fan_page        = FanPage(service=None, on_profile_change=self._on_profile_mode_changed)
             self.lighting_page   = LightingPage(service=None)
             self.keyboard_page   = KeyboardPage(service=None)
+            self.app_profiles_page = AppProfilesPage(service=None)
             self.mux_page        = MUXPage(service=None)
             self.settings_page   = SettingsPage(
                 on_theme_change=self._on_theme_change,
@@ -3424,6 +3460,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             self.stack.add_named(self.fan_page,        "fan")
             self.stack.add_named(self.lighting_page,   "lighting")
             self.stack.add_named(self.keyboard_page,   "keyboard")
+            self.stack.add_named(self.app_profiles_page, "app_profiles")
             self.stack.add_named(self.mux_page,        "mux")
             self.stack.add_named(self.settings_page,   "settings")
 
@@ -3435,6 +3472,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
                 self.fan_page.set_power_service(services.get("power"))
                 self.lighting_page.set_service(services.get("rgb"))
                 self.keyboard_page.set_service(services.get("platform"))
+                self.app_profiles_page.set_power_service(services.get("power"))
                 self.mux_page.set_service(services.get("mux"))
                 self.settings_page.set_service(services.get("mux"))
 

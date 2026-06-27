@@ -141,7 +141,10 @@ class FanController:
         return self.fan_count
 
     def get_max_speed(self, fan_num):
-        return self.max_speeds.get(fan_num, 6000)
+        val = self.max_speeds.get(fan_num, 6000)
+        if val <= 0:
+            val = 6000
+        return val
 
     def get_current_speed(self, fan_num):
         speed = self._hwmon_read(f"fan{fan_num}_input")
@@ -260,9 +263,10 @@ class FanController:
             pwm = max(pwm, PWM_FALLBACK_MIN)
 
         enable_path = os.path.join(self.hwmon_path, "pwm1_enable")
-        if sysfs_exists(enable_path) and self.get_mode() != "custom":
-            if not self.set_mode("custom"):
-                return False
+        if sysfs_exists(enable_path):
+            if sysfs_read(enable_path, 2) != 1:
+                sysfs_write(enable_path, 1)
+                self.mode = "custom"
 
         return sysfs_write(os.path.join(self.hwmon_path, "pwm1"), pwm)
 

@@ -12,12 +12,14 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from common.logging_config import setup_logging
 from common.config import ServiceConfig
 from common.dbus_helpers import run_service
+from common.app_launchers import get_running_launcher_ids
 from common.sysfs import (
     normalize_profile_name,
     sysfs_exists,
@@ -308,6 +310,8 @@ class PowerService:
       <interface name="com.yyl.hpmanager.power">
         <method name="SetPowerProfile"><arg type="s" name="profile" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="GetPowerProfile"><arg type="s" name="j" direction="out"/></method>
+        <method name="SetAppProfilesEnabled"><arg type="b" name="enabled" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetAppProfiles"><arg type="s" name="profiles_json" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
@@ -315,8 +319,18 @@ class PowerService:
 
     def __init__(self):
         self._ctrl = PowerProfileController()
-        self._config = ServiceConfig("power", {"power_profile": "balanced"})
+        self._config = ServiceConfig(
+            "power",
+            {
+                "power_profile": "balanced",
+                "app_profiles_enabled": False,
+                "app_profiles": {},
+            },
+        )
         self._config.load()
+
+        self._active_app = None
+        self._pre_app_state = None  # (power_profile, fan_mode)
 
         # Restore saved profile
         if self._ctrl.available:
@@ -328,6 +342,112 @@ class PowerService:
                 else:
                     logger.info("Power profile already '%s', skipping", saved)
 
+        # Background app monitor thread
+        threading.Thread(target=self._app_monitor_loop, daemon=True).start()
+
+    def _app_monitor_loop(self):
+        from pydbus import SystemBus
+        bus = SystemBus()
+        fan_proxy = None
+        
+        while True:
+            time.sleep(3.0)
+            if not self._config.get("app_profiles_enabled", False):
+                if self._active_app is not None:
+                    self._restore_pre_app_state(fan_proxy)
+                continue
+
+            app_profiles = self._config.get("app_profiles", {})
+            if not app_profiles:
+                if self._active_app is not None:
+                    self._restore_pre_app_state(fan_proxy)
+                continue
+
+            if fan_proxy is None:
+                try:
+                    fan_proxy = bus.get("com.yyl.hpmanager.fan", "/com/yyl/hpmanager/fan")
+                except Exception:
+                    pass
+
+            # Scan running processes and launchers
+            found_app = None
+            try:
+                for pid_str in os.listdir("/proc"):
+                    if not pid_str.isdigit():
+                        continue
+                    try:
+                        cmdline_path = os.path.join("/proc", pid_str, "cmdline")
+                        with open(cmdline_path, "r", errors="ignore") as f:
+                            cmdline = f.read().replace("\x00", " ").strip()
+                        if not cmdline:
+                            continue
+                        
+                        # Check direct matches
+                        for app_key in app_profiles.keys():
+                            if app_key in cmdline.lower():
+                                found_app = app_key
+                                break
+                                
+                        # Check launcher IDs
+                        if not found_app:
+                            l_ids = get_running_launcher_ids(pid_str)
+                            for app_key in app_profiles.keys():
+                                if app_key in l_ids:
+                                    found_app = app_key
+                                    break
+                    except Exception:
+                        pass
+                    if found_app:
+                        break
+            except Exception:
+                pass
+
+            if found_app != self._active_app:
+                if found_app is not None:
+                    # New app launched
+                    val = app_profiles.get(found_app)
+                    target_profile = val.get("profile", "balanced") if isinstance(val, dict) else val
+                    target_fan = val.get("fan_mode", "default") if isinstance(val, dict) else "default"
+                    
+                    # Store previous state
+                    curr_power = self._ctrl.get_active()
+                    curr_fan = "auto"
+                    if fan_proxy:
+                        try:
+                            f_info = json.loads(fan_proxy.GetFanInfo())
+                            curr_fan = f_info.get("mode", "auto")
+                        except Exception:
+                            pass
+                    
+                    if self._active_app is None:
+                        self._pre_app_state = (curr_power, curr_fan)
+
+                    logger.info("App Monitor: Detected '%s', switching power=%s, fan=%s", found_app, target_profile, target_fan)
+                    self._ctrl.set_profile(target_profile)
+                    if fan_proxy and target_fan in ("auto", "max"):
+                        try:
+                            fan_proxy.SetFanMode(target_fan)
+                        except Exception as e:
+                            logger.warning("Failed to set fan mode via D-Bus: %s", e)
+                else:
+                    # App closed, restore previous state
+                    self._restore_pre_app_state(fan_proxy)
+                
+                self._active_app = found_app
+
+    def _restore_pre_app_state(self, fan_proxy):
+        if self._pre_app_state:
+            old_power, old_fan = self._pre_app_state
+            logger.info("App Monitor: App closed, restoring power=%s, fan=%s", old_power, old_fan)
+            self._ctrl.set_profile(old_power)
+            if fan_proxy and old_fan in ("auto", "max"):
+                try:
+                    fan_proxy.SetFanMode(old_fan)
+                except Exception as e:
+                    logger.warning("Failed to restore fan mode via D-Bus: %s", e)
+            self._pre_app_state = None
+        self._active_app = None
+
     def SetPowerProfile(self, profile):
         if profile not in self._ctrl.get_profiles():
             return "FAIL"
@@ -335,6 +455,10 @@ class PowerService:
         if ok:
             self._config.set("power_profile", profile)
             self._config.save()
+            if self._active_app is not None and self._pre_app_state is not None:
+                # Update base state if user forces profile change while app is active
+                _, old_fan = self._pre_app_state
+                self._pre_app_state = (profile, old_fan)
         return "OK" if ok else "FAIL"
 
     def GetPowerProfile(self):
@@ -343,8 +467,28 @@ class PowerService:
                 "available": self._ctrl.available,
                 "active": self._ctrl.get_active(),
                 "profiles": self._ctrl.get_profiles(),
+                "app_profiles_enabled": self._config.get("app_profiles_enabled", False),
+                "app_profiles": self._config.get("app_profiles", {}),
+                "active_app": self._active_app,
             }
         )
+
+    def SetAppProfilesEnabled(self, enabled):
+        logger.info("SetAppProfilesEnabled: %s", enabled)
+        self._config.set("app_profiles_enabled", bool(enabled))
+        self._config.save()
+        return "OK"
+
+    def SetAppProfiles(self, profiles_json):
+        logger.info("SetAppProfiles: %s", profiles_json)
+        try:
+            data = json.loads(profiles_json)
+            self._config.set("app_profiles", data)
+            self._config.save()
+            return "OK"
+        except Exception as e:
+            logger.error("Failed to parse app profiles json: %s", e)
+            return "FAIL"
 
     def Ping(self):
         return "OK"
