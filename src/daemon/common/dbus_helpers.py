@@ -34,16 +34,15 @@ def _setup_sleep_handler(service_name: str):
             "org.freedesktop.login1", "/org/freedesktop/login1/Manager"
         )
 
-        def _on_props_changed(_iface, changed, _invalidated):
-            if "PrepareForSleep" in changed:
-                if changed["PrepareForSleep"]:
-                    logger.info("[%s] System preparing for sleep", service_name)
-                    system_sleeping.set()
-                else:
-                    logger.info("[%s] System waking up", service_name)
-                    system_sleeping.clear()
+        def _on_prepare_for_sleep(sleeping: bool):
+            if sleeping:
+                logger.info("[%s] System preparing for sleep", service_name)
+                system_sleeping.set()
+            else:
+                logger.info("[%s] System waking up", service_name)
+                system_sleeping.clear()
 
-        logind.onPropertiesChanged = _on_props_changed
+        logind.PrepareForSleep.connect(_on_prepare_for_sleep)
         logger.info("[%s] Sleep/wake handler registered", service_name)
     except Exception as exc:
         logger.warning(
@@ -84,9 +83,7 @@ def run_service(
     signal.signal(signal.SIGINT, _shutdown)
 
     if handle_sleep:
-        threading.Thread(
-            target=_setup_sleep_handler, args=(service_name,), daemon=True
-        ).start()
+        _setup_sleep_handler(service_name)
 
     try:
         bus = SystemBus()

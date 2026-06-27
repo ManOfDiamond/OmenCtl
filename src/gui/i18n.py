@@ -143,6 +143,19 @@ TRANSLATIONS = {
         "theme_label": "Uygulama açıldığında tema değiştir",
         "no_profiles": "Henüz bir uygulama profili eklenmedi.",
 
+        "power_tuning": "Güç ve Voltaj",
+        "power_tuning_desc": "Gelişmiş voltaj ve termal limit ayarları ile cihazınızın ısınmasını önleyin ve verimliliğini artırın.",
+        "undervolt_label": "CPU Undervolt (Voltaj Düşürme)",
+        "undervolt_desc": "Daha düşük voltaj, performans kaybı olmadan işlemcinizin daha serin çalışmasını sağlar.",
+        "tcc_label": "TCC Offset (Sıcaklık Limiti)",
+        "tcc_desc": "Maksimum çalışma sıcaklığını düşürerek işlemcinin erken kısılmasını ve aşırı ısınmasını engeller (Hedef Sıcaklık: 100 - TCC).",
+        "power_limits_label": "Güç Limitleri (PL1 / PL2)",
+        "power_limits_desc": "İşlemcinin çekeceği uzun süreli (PL1) ve kısa süreli (PL2) maksimum watt değerlerini belirleyin.",
+        "pl1_w": "Uzun Süreli Güç Limiti (PL1 - Watt)",
+        "pl2_w": "Kısa Süreli Güç Limiti (PL2 - Watt)",
+        "apply_power": "Ayarları Uygula",
+        "power_applied": "Güç ve voltaj ayarları başarıyla uygulandı.",
+        "unsupported_power": "Cihazınız bu gelişmiş güç yönetim fonksiyonlarını desteklemiyor.",
     },
     "en": {
         # Nav
@@ -259,6 +272,20 @@ TRANSLATIONS = {
         "theme_default": "Theme: Default", "theme_dark": "Theme: Dark", "theme_light": "Theme: Light",
         "theme_label": "Switch theme when application starts",
         "no_profiles": "No app profiles added yet.",
+
+        "power_tuning": "Power & Voltage",
+        "power_tuning_desc": "Prevent overheating and improve efficiency with advanced undervolt and thermal limit settings.",
+        "undervolt_label": "CPU Undervolt",
+        "undervolt_desc": "Lowering CPU voltage reduces operating temperatures without sacrificing performance.",
+        "tcc_label": "TCC Offset (Thermal Limit)",
+        "tcc_desc": "Lowers the maximum operating temperature to prevent extreme overheating (Target Temp: 100 - TCC).",
+        "power_limits_label": "Power Limits (PL1 / PL2)",
+        "power_limits_desc": "Configure the long-duration (PL1) and short-duration (PL2) maximum watt limits.",
+        "pl1_w": "Long Duration Power Limit (PL1 - Watts)",
+        "pl2_w": "Short Duration Power Limit (PL2 - Watts)",
+        "apply_power": "Apply Settings",
+        "power_applied": "Power and voltage settings applied successfully.",
+        "unsupported_power": "Your system does not support these advanced power tuning features.",
     },
 }
 

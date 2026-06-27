@@ -1801,7 +1801,7 @@ class FanPage(Gtk.Box):
                     self.last_applied_rpm[str(fn)] = target_rpm
                     
                     def _apply_async(fidx, rpm):
-                        try: self.service.SetFanTarget(fidx, rpm)
+                        try: _dbus_call(self.service.SetFanTarget, fidx, rpm)
                         except: pass
                     threading.Thread(target=_apply_async, args=(int(str(fn)), target_rpm), daemon=True).start()
             except Exception as e:

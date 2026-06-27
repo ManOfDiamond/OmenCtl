@@ -283,6 +283,10 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
 	},
 	{
+		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8D42")},
+		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
+	},
+	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8D87")},
 		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
 	},
@@ -3228,8 +3232,10 @@ static int __init hp_wmi_init(void)
 
 	if (event_capable) {
 		err = hp_wmi_input_setup();
-		if (err)
-			return err;
+		if (err) {
+			pr_warn("hp_wmi_input_setup failed (%d), continuing without event handling\n", err);
+			event_capable = 0;
+		}
 	}
 
 	if (bios_capable) {

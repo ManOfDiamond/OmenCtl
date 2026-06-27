@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.logging_config import setup_logging
 from common.config import ServiceConfig
 from common.dbus_helpers import run_service, system_sleeping
+from common.ec_controller import LinuxEcController
 
 logger = setup_logging("platform")
 
@@ -32,22 +33,18 @@ class PlatformService:
     def __init__(self):
         self._config = ServiceConfig("platform", {"prtsc_fix": False, "f1_fix": False})
         self._config.load()
+        self.ec = LinuxEcController()
 
         self._static_info = {
             "hostname": platform.node(),
             "kernel": platform.release(),
             "os_name": "Linux",
-            "product_name": "HP Laptop",
+            "product_name": self.ec.product_name,
+            "board_id": self.ec.board_id,
+            "capabilities": self.ec.capabilities.to_dict(),
+            "ec_access": self.ec.has_ec_access,
+            "is_unsafe_ec": self.ec.is_unsafe_ec_model,
         }
-        for dmi in ("/sys/devices/virtual/dmi/id/product_name",
-                     "/sys/devices/virtual/dmi/id/product_family"):
-            if os.path.exists(dmi):
-                try:
-                    with open(dmi) as f:
-                        self._static_info["product_name"] = f.read().strip()
-                    break
-                except Exception:
-                    pass
 
         self._has_nvidia_smi = shutil.which("nvidia-smi") is not None
         self._cpu_temp_path: typing.Optional[str] = None
@@ -99,6 +96,12 @@ class PlatformService:
                     continue
                 d_score = RANK_DRV.get(drv, 10)
                 for tf in glob.glob(os.path.join(path, "temp*_input")):
+                    try:
+                        with open(tf) as f_test:
+                            if int(f_test.read().strip()) <= 0:
+                                continue
+                    except Exception:
+                        continue
                     label = ""
                     lp = tf.replace("_input", "_label")
                     if os.path.exists(lp):
@@ -147,6 +150,10 @@ class PlatformService:
                     if t > -100.0:
                         return t
             except Exception: pass
+        if self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            t = self.ec.get_cpu_temp()
+            if t > 0:
+                return t
         return 0.0
 
     def _get_gpu_stats(self):
@@ -158,6 +165,10 @@ class PlatformService:
                     if t > -100.0:
                         stats["temp"] = t
             except Exception: pass
+        if stats["temp"] == 0.0 and self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            t = self.ec.get_gpu_temp()
+            if t > 0:
+                stats["temp"] = t
 
         if self._has_nvidia_smi:
             if self._nv_runtime_path and os.path.exists(self._nv_runtime_path):
@@ -240,6 +251,9 @@ class PlatformService:
 
     def _write_hwdb_rules(self, prtsc, f1):
         logger.info("Writing hwdb rules: prtsc=%s, f1=%s", prtsc, f1)
+        if os.path.exists("/etc/NIXOS") or os.path.exists("/run/current-system/sw/bin/nixos-version"):
+            logger.info("NixOS detected, skipping immutable /etc/udev/hwdb.d write")
+            return
         hwdb_path = "/etc/udev/hwdb.d/90-hp-keyboard-fixes.hwdb"
         if not prtsc and not f1:
             if os.path.exists(hwdb_path):

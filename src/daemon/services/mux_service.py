@@ -82,12 +82,13 @@ class MUXController:
             return self._cached_mode
         mode = "unknown"
         try:
+            env = dict(os.environ, PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
             if self.backend == "envycontrol" and self.envycontrol:
-                mode = subprocess.check_output([self.envycontrol, "--query"], stderr=subprocess.STDOUT, timeout=5).decode().strip().lower()
+                mode = subprocess.check_output([self.envycontrol, "--query"], stderr=subprocess.STDOUT, env=env, timeout=5).decode().strip().lower()
             elif self.backend == "supergfxctl" and self.supergfxctl:
-                mode = subprocess.check_output([self.supergfxctl, "-g"], stderr=subprocess.STDOUT, timeout=5).decode().strip().lower()
+                mode = subprocess.check_output([self.supergfxctl, "-g"], stderr=subprocess.STDOUT, env=env, timeout=5).decode().strip().lower()
             elif self.backend == "prime-select" and self.prime_select:
-                mode = subprocess.check_output([self.prime_select, "query"], stderr=subprocess.STDOUT, timeout=5).decode().strip().lower()
+                mode = subprocess.check_output([self.prime_select, "query"], stderr=subprocess.STDOUT, env=env, timeout=5).decode().strip().lower()
         except Exception as e:
             logger.debug("MUX get_mode error: %s", e)
         self._cached_mode = self._normalize_mode(mode)
@@ -98,26 +99,29 @@ class MUXController:
         if mode not in VALID_GPU_MODES:
             return f"Error: Invalid mode '{mode}'"
         try:
+            env = dict(os.environ, PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
             if self.backend == "envycontrol" and self.envycontrol:
                 m = {"hybrid":"hybrid","discrete":"nvidia","integrated":"integrated"}.get(mode)
                 if m is None:
                     return f"Error: Unsupported mode '{mode}' for envycontrol"
-                subprocess.run([self.envycontrol, "-s", m], check=True, timeout=10)
+                subprocess.run([self.envycontrol, "-s", m], check=True, capture_output=True, text=True, env=env, timeout=10)
             elif self.backend == "supergfxctl" and self.supergfxctl:
                 m = {"hybrid":"Hybrid","discrete":"Dedicated","integrated":"Integrated"}.get(mode)
                 if m is None:
                     return f"Error: Unsupported mode '{mode}' for supergfxctl"
-                subprocess.run([self.supergfxctl, "-m", m], check=True, timeout=10)
+                subprocess.run([self.supergfxctl, "-m", m], check=True, capture_output=True, text=True, env=env, timeout=10)
             elif self.backend == "prime-select" and self.prime_select:
                 m = {"hybrid":"on-demand","discrete":"nvidia","integrated":"intel"}.get(mode)
                 if m is None:
                     return f"Error: Unsupported mode '{mode}' for prime-select"
-                subprocess.run([self.prime_select, m], check=True, timeout=10)
+                subprocess.run([self.prime_select, m], check=True, capture_output=True, text=True, env=env, timeout=10)
             else:
                 return "No backend"
             self._cached_mode = mode
             self._last_check = time.time()
             return "OK"
+        except subprocess.CalledProcessError as e:
+            return f"Error: {e.stderr.strip() or e}"
         except Exception as e:
             return f"Error: {e}"
 

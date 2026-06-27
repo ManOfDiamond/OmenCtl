@@ -25,6 +25,7 @@ from common.sysfs import (
     sysfs_write,
 )
 from common.dbus_helpers import run_service, system_sleeping
+from common.ec_controller import LinuxEcController
 
 logger = setup_logging("fan")
 
@@ -40,6 +41,7 @@ class FanController:
     """Low-level fan hardware access via hwmon sysfs."""
 
     def __init__(self):
+        self.ec = LinuxEcController()
         self.hwmon_path = self._find_hwmon()
         self.fan_count = 0
         self.found_fans = []
@@ -50,6 +52,11 @@ class FanController:
             self._detect_fans()
             self._read_max_speeds()
             self._read_current_mode()
+        if not self.found_fans and self.ec.has_ec_access:
+            logger.info("No hwmon fans detected, but EC access is available. Populating legacy EC fans.")
+            self.found_fans = [1, 2]
+            self.fan_count = 2
+            self.max_speeds = {1: 6000, 2: 6000}
 
     # ── discovery ─────────────────────────────────────────────────────
 
@@ -118,6 +125,8 @@ class FanController:
     def _read_current_mode(self):
         if not self.hwmon_path:
             return
+        if self.mode in ("custom", "max"):
+            return
         pwm_path = os.path.join(self.hwmon_path, "pwm1_enable")
         val = sysfs_read(pwm_path, 2)
         if val == 0:
@@ -174,15 +183,19 @@ class FanController:
     # ── write ─────────────────────────────────────────────────────────
 
     def set_mode(self, mode):
-        if not self.hwmon_path:
-            return False
         val = {"auto": 2, "max": 0, "custom": 1}.get(mode)
         if val is None:
             return False
 
-        # Always attempt the pwm1_enable write instead of relying on
-        # cached/fallback mode detection which can be inaccurate.
-        ok = sysfs_write(os.path.join(self.hwmon_path, "pwm1_enable"), val)
+        ok = False
+        if self.hwmon_path:
+            # Always attempt the pwm1_enable write instead of relying on
+            # cached/fallback mode detection which can be inaccurate.
+            ok = sysfs_write(os.path.join(self.hwmon_path, "pwm1_enable"), val)
+
+        if not ok and mode == "custom" and self._has_pwm_fallback():
+            logger.info("pwm1_enable write failed for custom, falling back to direct pwm1 write availability")
+            ok = True
 
         if not ok and mode == "max":
             logger.info("pwm1_enable write failed for max, trying platform profile fallback")
@@ -199,6 +212,10 @@ class FanController:
                     ok = True
                     logger.info("Max fan mode set via fallback: %s", profile_path)
                     break
+            if not ok and self._has_pwm_fallback():
+                logger.info("Using direct pwm1 write (255) for max mode fallback")
+                if sysfs_write(os.path.join(self.hwmon_path, "pwm1"), 255):
+                    ok = True
 
         if not ok and mode == "auto":
             logger.info("pwm1_enable write failed for auto, trying platform profile fallback")
@@ -215,6 +232,15 @@ class FanController:
                     ok = True
                     logger.info("Auto fan mode set via fallback: %s", profile_path)
                     break
+            if not ok and self._has_pwm_fallback():
+                logger.info("Using direct pwm1 write (0) for auto mode fallback")
+                if sysfs_write(os.path.join(self.hwmon_path, "pwm1"), 0):
+                    ok = True
+
+        if not ok and self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            logger.info("Using direct EC write for mode %s fallback", mode)
+            if self.ec.set_perf_mode(mode):
+                ok = True
 
         if ok:
             self.mode = mode
@@ -224,20 +250,24 @@ class FanController:
         return ok
 
     def set_fan_target(self, fan_num, rpm):
-        if not self.hwmon_path or fan_num not in self.found_fans:
-            logger.debug("set_fan_target: invalid fan_num=%s or no hwmon", fan_num)
+        if fan_num not in self.found_fans:
+            logger.debug("set_fan_target: invalid fan_num=%s", fan_num)
             return False
         rpm = max(0, min(rpm, self.get_max_speed(fan_num)))
-        path = os.path.join(self.hwmon_path, f"fan{fan_num}_target")
-        if sysfs_exists(path):
+        path = os.path.join(self.hwmon_path, f"fan{fan_num}_target") if self.hwmon_path else None
+        if path and sysfs_exists(path):
             ok = sysfs_write(path, rpm)
         elif self._has_pwm_fallback():
             ok = self._set_pwm_fallback_target(fan_num, rpm)
+        elif self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            max_rpm = self.get_max_speed(fan_num)
+            pct = int(round(rpm * 100.0 / max_rpm))
+            logger.info("Using direct EC write for fan %d target (%d%%)", fan_num, pct)
+            ok = self.ec.set_fan_speed_pct(fan_num, pct)
         else:
             logger.debug(
-                "No fan%d_target or pwm1 fallback available under %s",
+                "No fan%d_target, pwm1 fallback, or EC access available",
                 fan_num,
-                self.hwmon_path,
             )
             return False
 
@@ -263,7 +293,7 @@ class FanController:
             pwm = max(pwm, PWM_FALLBACK_MIN)
 
         enable_path = os.path.join(self.hwmon_path, "pwm1_enable")
-        if sysfs_exists(enable_path):
+        if sysfs_exists(enable_path) and self.mode != "custom":
             if sysfs_read(enable_path, 2) != 1:
                 sysfs_write(enable_path, 1)
                 self.mode = "custom"
@@ -271,7 +301,7 @@ class FanController:
         return sysfs_write(os.path.join(self.hwmon_path, "pwm1"), pwm)
 
     def is_available(self):
-        return self.hwmon_path is not None and self.fan_count > 0
+        return (self.hwmon_path is not None and self.fan_count > 0) or self.ec.has_ec_access
 
     def get_mode(self):
         if self.hwmon_path:
@@ -315,23 +345,73 @@ class FanService:
         if not self._fan.is_available():
             return
         saved = self._config.get("fan_mode", "auto")
-        if saved == "custom":
-            saved = "auto"
-            self._config.set("fan_mode", "auto")
-            logger.warning("Custom fan mode not restorable, falling back to auto")
 
-        if saved in ("auto", "max"):
+        if saved in ("auto", "max", "custom"):
             if self._fan.get_mode() != saved:
                 ok = self._fan.set_mode(saved)
                 logger.info("Restored fan mode '%s' (success=%s)", saved, ok)
             else:
                 logger.info("Fan mode already '%s', skipping write", saved)
 
+    def _get_max_temp(self):
+        max_t = 0.0
+        try:
+            for path in glob.glob("/sys/class/hwmon/hwmon*/temp*_input"):
+                try:
+                    with open(path) as f:
+                        t = int(f.read().strip()) / 1000.0
+                        if 0 < t < 120 and t > max_t:
+                            max_t = t
+                except Exception:
+                    pass
+            if max_t == 0:
+                for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+                    try:
+                        with open(path) as f:
+                            t = int(f.read().strip()) / 1000.0
+                            if 0 < t < 120 and t > max_t:
+                                max_t = t
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return max_t or 45.0
+
+    def _curve_fan_pct(self, points, temp):
+        if not points:
+            return 0
+        if temp <= points[0][0]:
+            return points[0][1]
+        if temp >= points[-1][0]:
+            return points[-1][1]
+        for idx in range(len(points) - 1):
+            t0, f0 = points[idx]
+            t1, f1 = points[idx + 1]
+            if t0 <= temp <= t1:
+                ratio = (temp - t0) / (t1 - t0) if t1 != t0 else 0
+                return f0 + (f1 - f0) * ratio
+        return points[-1][1]
+
     def _monitor_loop(self):
         while True:
             if system_sleeping.is_set():
                 time.sleep(0.5)
                 continue
+
+            mode = self._fan.get_mode()
+            custom_curve_str = self._config.get("custom_curve", "[]")
+            if mode == "custom":
+                try:
+                    curve = json.loads(custom_curve_str)
+                    if curve and len(curve) > 0:
+                        temp = self._get_max_temp()
+                        pct = self._curve_fan_pct(curve, temp)
+                        for i in self._fan.found_fans:
+                            max_rpm = self._fan.get_max_speed(i)
+                            target = int(max_rpm * pct / 100.0)
+                            self._fan.set_fan_target(i, target)
+                except Exception as e:
+                    logger.debug("Failed to apply custom curve in monitor loop: %s", e)
 
             fans_data = {
                 str(i): {
@@ -344,8 +424,8 @@ class FanService:
             snapshot = {
                 "available": self._fan.is_available(),
                 "fan_count": self._fan.get_fan_count(),
-                "mode": self._fan.get_mode(),
-                "custom_curve": self._config.get("custom_curve", "[]"),
+                "mode": mode,
+                "custom_curve": custom_curve_str,
                 "fans": fans_data,
             }
 
@@ -358,6 +438,8 @@ class FanService:
 
     def SetFanMode(self, mode):
         logger.info("SetFanMode: %s", mode)
+        if self._fan.get_mode() == mode and self._config.get("fan_mode") == mode:
+            return "OK"
         ok = self._fan.set_mode(mode)
         if ok:
             self._config.set("fan_mode", mode)
@@ -374,6 +456,14 @@ class FanService:
 
     def SaveCustomCurve(self, curve_json):
         logger.info("SaveCustomCurve: %s", curve_json)
+        try:
+            data = json.loads(curve_json)
+            if not isinstance(data, list):
+                return "FAIL"
+        except Exception:
+            return "FAIL"
+        if self._config.get("custom_curve") == curve_json:
+            return "OK"
         self._config.set("custom_curve", curve_json)
         self._config.save()
         return "OK"

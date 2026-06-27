@@ -1,6 +1,6 @@
-# OmenCtl v1.5.3 Update Log
+# OmenCtl v1.6.0-preview Update Log
 
-A comprehensive roadmap and set of fixes were implemented for the upcoming v1.5.3 release to address the issues reported:
+A comprehensive roadmap and set of fixes were implemented for the upcoming v1.6.0-preview release to address the issues reported:
 
 ## 1. Autostart & Background Tray Icon 🚀
 *   **Added `--hidden` CLI flag**: Implemented in `src/omen-cli.py` and `src/gui/main_window.py`. When launched with `--hidden`, the GTK window is initialized but not presented to the user, allowing it to act purely as a background process.

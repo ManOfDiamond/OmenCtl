@@ -30,12 +30,18 @@ FORCE_CUSTOM_HPWMI=false
 
 # Some boards still require the patched hp-wmi path even on kernel 7.0+.
 case "$BOARD_NAME" in
-    8D41|8BCD) FORCE_CUSTOM_HPWMI=true ;; # OMEN Max 16 and 16-xd0xxx
+    8D41|8D42|8BCD) FORCE_CUSTOM_HPWMI=true ;; # OMEN Max 16 and 16-xd0xxx
 esac
 
 STOCK_FAN_SUPPORT=false
 if [ "$KVER_MAJOR" -gt 7 ] || { [ "$KVER_MAJOR" -eq 7 ] && [ "$KVER_MINOR" -ge 0 ]; }; then
     STOCK_FAN_SUPPORT=true
+    # Verify stock hp-wmi actually exists in the kernel tree (e.g. some Zen/Arch kernels omit it)
+    if ! modinfo hp-wmi &>/dev/null; then
+        echo -e "${YELLOW}[WARN] Kernel >= 7.0 detected but stock hp-wmi module is missing. Forcing custom hp-wmi build.${NC}"
+        STOCK_FAN_SUPPORT=false
+        FORCE_CUSTOM_HPWMI=true
+    fi
 fi
 if $FORCE_CUSTOM_HPWMI; then
     STOCK_FAN_SUPPORT=false
@@ -312,6 +318,8 @@ DKMSRGB
             "/usr/src/kernels/$KVER/scripts" \
             "/lib/modules/$KVER/build/scripts" \
             "/usr/lib/modules/$KVER/build/scripts" \
+            "/usr/src/linux-headers-$KVER" \
+            "/usr/lib/modules/$KVER" \
             -name "sign-file" -type f 2>/dev/null | head -n 1)
 
         if [ -n "$SIGN_SCRIPT" ]; then
@@ -326,13 +334,14 @@ DKMSRGB
                 fi
             done
         else
-            warn "sign-file script not found! Modules could not be signed. Secure Boot may block them."
+            warn "sign-file script not found in kernel headers!"
+            warn "Modules could not be signed. Secure Boot will block them unless you sign them manually or disable Secure Boot."
         fi
 
         # Enrol MOK if not yet enrolled
         if mokutil --test-key "$MOK_DIR/MOK.der" 2>/dev/null | grep -qi "not enrolled"; then
             info "Enrolling MOK key..."
-            MOK_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
+            MOK_PASSWORD="omen"
             printf "%s\n%s\n" "$MOK_PASSWORD" "$MOK_PASSWORD" | mokutil --import "$MOK_DIR/MOK.der" 2>/dev/null \
                 || warn "Failed to import MOK key."
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.0-preview
+- **Gelişmiş Güç Yönetimi & Undervolt**: Donanım yeteneklerine dayalı koşullu UI ve PowerPage eklendi.
+- **Arka Plan & Otomatik Başlatma**: `--hidden` bayrağı, pystray tepsi simgesi ve `self.hold()` yaşam döngüsü entegre edildi.
+- **Kararlılık & Güvenlik**: D-Bus kota aşımı koruması ve Systemd izolasyonu sıkılaştırıldı.
+
 ## v1.5.2
 - **Kernel Compatibility**: Upstreamed Linux 7.1 kernel `hp-wmi` patches (Added support for new board IDs like 8C58, 8902, 8A44, 8BC2, 8C77, 8D41 and updated fan struct mappings).
 - **RGB Driver Fixes (`hp-rgb-lighting`)**:

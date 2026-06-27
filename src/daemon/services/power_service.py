@@ -6,6 +6,7 @@ GPU power-limit synchronisation.  Exposes its functionality over D-Bus
 as ``com.yyl.hpmanager.power``.
 """
 
+import concurrent.futures
 import json
 import os
 import shutil
@@ -27,11 +28,27 @@ from common.sysfs import (
     sysfs_read_str,
     sysfs_write,
 )
+from common.ec_controller import LinuxEcController
 
 from pydbus import SystemBus
 
 logger = setup_logging("power")
 THERMAL_PROFILE_BALANCED = 0
+
+_dbus_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="pwr-dbus")
+
+
+def _dbus_call(fn, *args, timeout=3.0):
+    """Run a D-Bus proxy call with a timeout to avoid indefinite blocking."""
+    fut = _dbus_pool.submit(fn, *args)
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        logger.warning("D-Bus call timed out after %ss: %s", timeout, fn)
+        return None
+    except Exception as e:
+        logger.warning("D-Bus call failed: %s", e)
+        return None
 
 
 # ─── Power Profile Controller ────────────────────────────────────────────────
@@ -312,12 +329,16 @@ class PowerService:
         <method name="GetPowerProfile"><arg type="s" name="j" direction="out"/></method>
         <method name="SetAppProfilesEnabled"><arg type="b" name="enabled" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="SetAppProfiles"><arg type="s" name="profiles_json" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetUndervolt"><arg type="i" name="mv" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetTccOffset"><arg type="i" name="val" direction="in"/><arg type="s" name="resp" direction="out"/></method>
+        <method name="SetPowerLimits"><arg type="b" name="enabled" direction="in"/><arg type="i" name="pl1" direction="in"/><arg type="i" name="pl2" direction="in"/><arg type="s" name="resp" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
     """
 
     def __init__(self):
+        self.ec = LinuxEcController()
         self._ctrl = PowerProfileController()
         self._config = ServiceConfig(
             "power",
@@ -325,9 +346,19 @@ class PowerService:
                 "power_profile": "balanced",
                 "app_profiles_enabled": False,
                 "app_profiles": {},
+                "undervolt_mv": 0,
+                "tcc_offset": 0,
+                "pl1_w": 45,
+                "pl2_w": 80,
+                "pl_enabled": False,
             },
         )
         self._config.load()
+        self._apply_power_tuning()
+
+    def _apply_power_tuning(self):
+        if self._config.get("pl_enabled"):
+            self.SetPowerLimits(True, self._config.get("pl1_w"), self._config.get("pl2_w"))
 
         self._active_app = None
         self._pre_app_state = None  # (power_profile, fan_mode)
@@ -365,7 +396,7 @@ class PowerService:
 
             if fan_proxy is None:
                 try:
-                    fan_proxy = bus.get("com.yyl.hpmanager.fan", "/com/yyl/hpmanager/fan")
+                    fan_proxy = _dbus_call(bus.get, "com.yyl.hpmanager.fan", "/com/yyl/hpmanager/fan")
                 except Exception:
                     pass
 
@@ -377,6 +408,8 @@ class PowerService:
                         continue
                     try:
                         cmdline_path = os.path.join("/proc", pid_str, "cmdline")
+                        if os.stat(cmdline_path).st_uid < 1000:
+                            continue
                         with open(cmdline_path, "r", errors="ignore") as f:
                             cmdline = f.read().replace("\x00", " ").strip()
                         if not cmdline:
@@ -414,8 +447,10 @@ class PowerService:
                     curr_fan = "auto"
                     if fan_proxy:
                         try:
-                            f_info = json.loads(fan_proxy.GetFanInfo())
-                            curr_fan = f_info.get("mode", "auto")
+                            f_info_raw = _dbus_call(fan_proxy.GetFanInfo)
+                            if f_info_raw:
+                                f_info = json.loads(f_info_raw)
+                                curr_fan = f_info.get("mode", "auto")
                         except Exception:
                             pass
                     
@@ -425,10 +460,7 @@ class PowerService:
                     logger.info("App Monitor: Detected '%s', switching power=%s, fan=%s", found_app, target_profile, target_fan)
                     self._ctrl.set_profile(target_profile)
                     if fan_proxy and target_fan in ("auto", "max"):
-                        try:
-                            fan_proxy.SetFanMode(target_fan)
-                        except Exception as e:
-                            logger.warning("Failed to set fan mode via D-Bus: %s", e)
+                        _dbus_call(fan_proxy.SetFanMode, target_fan)
                 else:
                     # App closed, restore previous state
                     self._restore_pre_app_state(fan_proxy)
@@ -441,10 +473,7 @@ class PowerService:
             logger.info("App Monitor: App closed, restoring power=%s, fan=%s", old_power, old_fan)
             self._ctrl.set_profile(old_power)
             if fan_proxy and old_fan in ("auto", "max"):
-                try:
-                    fan_proxy.SetFanMode(old_fan)
-                except Exception as e:
-                    logger.warning("Failed to restore fan mode via D-Bus: %s", e)
+                _dbus_call(fan_proxy.SetFanMode, old_fan)
             self._pre_app_state = None
         self._active_app = None
 
@@ -470,8 +499,72 @@ class PowerService:
                 "app_profiles_enabled": self._config.get("app_profiles_enabled", False),
                 "app_profiles": self._config.get("app_profiles", {}),
                 "active_app": self._active_app,
+                "capabilities": self.ec.capabilities.to_dict(),
+                "undervolt_mv": self._config.get("undervolt_mv", 0),
+                "tcc_offset": self._config.get("tcc_offset", 0),
+                "pl1_w": self._config.get("pl1_w", 45),
+                "pl2_w": self._config.get("pl2_w", 80),
+                "pl_enabled": self._config.get("pl_enabled", False),
             }
         )
+
+    def SetUndervolt(self, mv):
+        try:
+            mv = int(mv)
+            mv = max(-250, min(250, mv))
+        except (ValueError, TypeError):
+            return "FAIL"
+        logger.info("SetUndervolt: %d mV", mv)
+        self._config.set("undervolt_mv", mv)
+        self._config.save()
+        try:
+            if shutil.which("intel-undervolt"):
+                subprocess.run(["intel-undervolt", "apply"], capture_output=True)
+            elif shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--curve-opt={mv}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply undervolt: %s", e)
+        return "OK"
+
+    def SetTccOffset(self, val):
+        try:
+            val = int(val)
+            val = max(0, min(15, val))
+        except (ValueError, TypeError):
+            return "FAIL"
+        logger.info("SetTccOffset: %d", val)
+        self._config.set("tcc_offset", val)
+        self._config.save()
+        try:
+            if shutil.which("wrmsr"):
+                # MSR 0x1a2 is MSR_TEMPERATURE_TARGET
+                subprocess.run(["wrmsr", "-a", "0x1a2", f"{val:x}000000"], capture_output=True)
+            elif shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--max-temp={100 - val}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply TCC offset: %s", e)
+        return "OK"
+
+    def SetPowerLimits(self, enabled, pl1, pl2):
+        logger.info("SetPowerLimits: enabled=%s, pl1=%d, pl2=%d", enabled, pl1, pl2)
+        self._config.set("pl_enabled", bool(enabled))
+        self._config.set("pl1_w", int(pl1))
+        self._config.set("pl2_w", int(pl2))
+        self._config.save()
+        if not enabled:
+            return "OK"
+        try:
+            rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw"
+            rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw"
+            if sysfs_exists(rapl1):
+                sysfs_write(rapl1, int(pl1) * 1000000)
+            if sysfs_exists(rapl2):
+                sysfs_write(rapl2, int(pl2) * 1000000)
+            if shutil.which("ryzenadj"):
+                subprocess.run(["ryzenadj", f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+        except Exception as e:
+            logger.debug("Failed to apply power limits: %s", e)
+        return "OK"
 
     def SetAppProfilesEnabled(self, enabled):
         logger.info("SetAppProfilesEnabled: %s", enabled)

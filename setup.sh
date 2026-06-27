@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.5.3"
+VERSION="1.6.0-preview"
 
 # Colors
 RED='\033[0;31m'
@@ -240,13 +240,13 @@ install_dependencies() {
     # Base packages — power manager NOT included here
     case $PM in
         pacman)
-            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo
+            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo python-pystray python-pillow
             ;;
         apt)
-            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray
+            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray python3-pil
             ;;
         dnf|zypper)
-            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray
+            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray python3-pillow
             ;;
     esac
 
@@ -258,15 +258,20 @@ install_dependencies() {
     if [ -n "$existing_pm" ]; then
         log "$(msg pm_already_present "$existing_pm")"
     else
-        # Nothing found — ask the user which one to install
-        msg select_power_manager
-        msg pm_opt_1
-        msg pm_opt_2
-        msg pm_opt_3
-        msg pm_opt_4
-        msg pm_opt_5
-        msg pm_choice
-        read -r choice
+        if [ "${NON_INTERACTIVE:-false}" = true ]; then
+            info "Non-interactive mode: defaulting to power-profiles-daemon"
+            choice=1
+        else
+            # Nothing found — ask the user which one to install
+            msg select_power_manager
+            msg pm_opt_1
+            msg pm_opt_2
+            msg pm_opt_3
+            msg pm_opt_4
+            msg pm_opt_5
+            msg pm_choice
+            read -r choice
+        fi
 
         case ${choice:-1} in
             2)
@@ -317,8 +322,11 @@ manage_driver() {
             if [ "$kver_major" -lt 7 ]; then
                 stock_fan_support=false
             fi
+            if ! modinfo hp-wmi &>/dev/null; then
+                stock_fan_support=false
+            fi
             case "$board_name" in
-                8D41|8BCD) stock_fan_support=false ;; # OMEN Max 16 & 16-xd0xxx still need patched hp-wmi
+                8D41|8D42|8BCD) stock_fan_support=false ;; # OMEN Max 16 & 16-xd0xxx still need patched hp-wmi
             esac
 
             # ── Prompt 1: hp-rgb-lighting (always shown — required for keyboard RGB) ──
@@ -326,8 +334,13 @@ manage_driver() {
             msg rgb_driver_prompt
             msg rgb_driver_note
             printf '%s\n' "--------------------------------------------------------"
-            msg rgb_driver_choice
-            read -r rgb_choice
+            if [ "${NON_INTERACTIVE:-false}" = true ]; then
+                info "Non-interactive mode: automatically selecting Yes for hp-rgb-lighting"
+                rgb_choice="y"
+            else
+                msg rgb_driver_choice
+                read -r rgb_choice
+            fi
 
             local install_rgb=false
             if [[ "$rgb_choice" =~ ^[Yy]$ ]]; then
@@ -343,8 +356,13 @@ manage_driver() {
                 msg wmi_driver_prompt
                 msg wmi_driver_note
                 printf '%s\n' "--------------------------------------------------------"
-                msg wmi_driver_choice
-                read -r wmi_choice
+                if [ "${NON_INTERACTIVE:-false}" = true ]; then
+                    info "Non-interactive mode: automatically selecting Yes for patched hp-wmi"
+                    wmi_choice="y"
+                else
+                    msg wmi_driver_choice
+                    read -r wmi_choice
+                fi
 
                 if [[ "$wmi_choice" =~ ^[Yy]$ ]]; then
                     install_wmi=true
@@ -383,8 +401,11 @@ manage_driver() {
                 if [ "$kver_major" -lt 7 ]; then
                     stock_fan_support=false
                 fi
+                if ! modinfo hp-wmi &>/dev/null; then
+                    stock_fan_support=false
+                fi
                 case "$board_name_check" in
-                    8D41|8BCD) stock_fan_support=false ;;
+                    8D41|8D42|8BCD) stock_fan_support=false ;;
                 esac
                 if [ "${FORCE_RGB_ONLY:-false}" = true ]; then
                     stock_fan_support=true
@@ -630,9 +651,11 @@ do_install() {
     cp src/gui/pages/*.py     "$DATA_DIR/gui/pages/"
     cp src/gui/widgets/*.py   "$DATA_DIR/gui/widgets/"
 
-    # CLI files
+    # CLI and Tray files
     cp src/omen-cli.py "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/omen-cli.py"
+    cp src/omen-tray.py "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/omen-tray.py"
 
     # Images (non-fatal if missing)
     if [ -d "images" ] && [ -n "$(ls -A images 2>/dev/null)" ]; then
@@ -655,13 +678,31 @@ LAUNCHER
     chmod +x "$BIN_LINK"
     ln -sf "$BIN_LINK" "$OMENCTL_LINK"
 
-    # CLI link
+    # CLI and Tray link
     ln -sf "$INSTALL_DIR/omen-cli.py" "$CLI_LINK"
+    ln -sf "$INSTALL_DIR/omen-tray.py" "/usr/bin/omen-tray"
 
     # System integration
     mkdir -p /etc/dbus-1/system.d
     mkdir -p /usr/share/polkit-1/actions
     mkdir -p /usr/share/applications
+    mkdir -p /etc/xdg/autostart
+
+    cat > /etc/xdg/autostart/omenctl-bg.desktop << 'AUTOSTART'
+[Desktop Entry]
+Name=OmenCtl Background
+Comment=OMEN Command Center Background Autostart
+Exec=sh -c "sleep 5 && omenctl --hidden"
+Icon=omenctl
+Terminal=false
+Type=Application
+Categories=System;Settings;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+X-KDE-autostart-after=panel
+AUTOSTART
+    chmod 644 /etc/xdg/autostart/omenctl-bg.desktop
 
     # Ensure legacy monolithic service is stopped and removed
     systemctl stop com.yyl.hpmanager.service 2>/dev/null || true
@@ -721,12 +762,48 @@ for svc in fan rgb power mux platform; do
     systemctl disable "hpm-${svc}.service" 2>/dev/null || true
 done
 
+echo "Unloading kernel modules..."
+modprobe -r hp_rgb_lighting 2>/dev/null || true
+modprobe -r hp_wmi          2>/dev/null || true
+
+echo "Removing DKMS entries for hp-rgb-lighting and hp-wmi..."
+if command -v dkms &>/dev/null; then
+    for entry in $(dkms status 2>/dev/null | grep -i -E 'hp-rgb-lighting|hp-wmi' | sed 's/,.*//; s/ //g'); do
+        mod_name=$(echo "$entry" | cut -d/ -f1)
+        mod_ver=$(echo "$entry" | cut -d/ -f2)
+        if [ -n "$mod_name" ] && [ -n "$mod_ver" ]; then
+            echo "  Removing DKMS: ${mod_name}/${mod_ver}"
+            dkms remove -m "$mod_name" -v "$mod_ver" --all 2>/dev/null || true
+        fi
+    done
+fi
+
+echo "Purging kernel module files and restoring stock backup..."
+kver=$(uname -r)
+find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+    -name 'hp-rgb-lighting.ko*' -delete 2>/dev/null || true
+find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+    -name 'hp-wmi.ko' -path '*/updates/*' -delete 2>/dev/null || true
+find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+    -name 'hp-wmi.ko' -path '*/dkms/*' -delete 2>/dev/null || true
+
+while IFS= read -r bu_file; do
+    orig_file="${bu_file%.backup}"
+    echo "  Restoring stock driver: $orig_file"
+    mv "$bu_file" "$orig_file"
+done < <(find /lib/modules/"$kver" /usr/lib/modules/"$kver" \
+    -name 'hp-wmi.ko*.backup' 2>/dev/null | sort -u)
+
+depmod -a 2>/dev/null || true
+rm -rf /usr/src/hp-rgb-lighting-* /usr/src/hp-wmi-* 2>/dev/null || true
+
 echo "Removing files..."
 rm -f /etc/systemd/system/hp-manager.service
 rm -f /etc/systemd/system/com.yyl.hpmanager.service
 rm -f "$BIN_LINK"
 rm -f "$OMENCTL_LINK"
 rm -f "$CLI_LINK"
+rm -f "/usr/bin/omen-tray"
 rm -rf "$INSTALL_DIR"
 rm -rf "$DATA_DIR"
 rm -rf "/var/lib/hp-manager"
@@ -736,6 +813,7 @@ for svc in fan rgb power mux platform; do
     rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
 done
 rm -f /usr/share/applications/com.yyl.hpmanager.desktop
+rm -f /etc/xdg/autostart/omenctl-bg.desktop
 rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
 rm -f /etc/modules-load.d/hp-rgb-lighting.conf
 rm -f /etc/modules-load.d/hp-wmi.conf
@@ -769,6 +847,19 @@ UNINSTALLER
     # Omen Key shortcut
     setup_omen_key_shortcut
 
+    if command -v mokutil &>/dev/null && mokutil --sb-state 2>/dev/null | grep -q "enabled"; then
+        echo -e "\n${YELLOW}══════════════════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW} ⚠  SECURE BOOT (MOK) ÖNEMLİ UYARI / IMPORTANT SECURE BOOT NOTICE  ⚠${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "Sisteminizde Secure Boot aktif. Kernel sürücülerinin (hp-wmi, hp-rgb-lighting) çalışabilmesi"
+        echo -e "için yeniden başlatma sonrasında açılacak mavi MOKManager (MOK Yönetimi) ekranında:"
+        echo -e "  1. 'Enroll MOK' seçeneğine tıklayın."
+        echo -e "  2. 'Continue' ve 'Yes' seçerek şifreyi (driver/setup.sh belirlediğiniz şifre, genelde omen)"
+        echo -e "     girin ve anahtarı onaylayın."
+        echo -e "Bu adımı atlarsanız sürücüler yüklenemez ve fan/RGB aydınlatma çalışmaz!"
+        echo -e "${YELLOW}══════════════════════════════════════════════════════════════════════════════════════════\n${NC}"
+    fi
+
     log "$(msg success)"
 }
 
@@ -791,7 +882,9 @@ do_uninstall() {
     rm -f "$BIN_LINK"
     rm -f "$OMENCTL_LINK"
     rm -f "$CLI_LINK"
+    rm -f "/usr/bin/omen-tray"
     rm -f "$UNINSTALLER_LINK"
+    rm -f /etc/xdg/autostart/omenctl-bg.desktop
     rm -rf "$INSTALL_DIR"
     rm -rf "$DATA_DIR"
     rm -rf "/var/lib/hp-manager"
@@ -933,7 +1026,29 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-case "${1}" in
+NON_INTERACTIVE=false
+ACTION=""
+
+for arg in "$@"; do
+    case "$arg" in
+        -y|--non-interactive) NON_INTERACTIVE=true ;;
+        install|uninstall|update|_update_apply) ACTION="$arg" ;;
+        -h|--help)
+            msg usage
+            echo "Options: install, uninstall, update"
+            echo "Flags: -y, --non-interactive (skip prompts)"
+            exit 0
+            ;;
+        *)
+            if [ -z "$ACTION" ]; then
+                msg usage
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+case "$ACTION" in
     install)        do_install ;;
     uninstall)      do_uninstall ;;
     update)         do_update ;;
@@ -941,11 +1056,6 @@ case "${1}" in
         # Called after git pull + exec; do_update skips the git section and
         # goes straight to nuke-everything cleanup → fresh install with prompts
         do_update ;;
-    -h|--help)
-        msg usage
-        echo "Options: install, uninstall, update"
-        exit 0
-        ;;
     *)
         msg usage
         exit 1

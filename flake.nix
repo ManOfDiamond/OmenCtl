@@ -19,6 +19,8 @@
             pygobject3
             pydbus
             pycairo
+            pystray
+            pillow
           ]);
         in
         {
@@ -69,6 +71,12 @@
                 chmod +x $out/libexec/hp-manager/omen-cli.py
                 sed -i "1s|.*|#!${pythonEnv}/bin/python|" $out/libexec/hp-manager/omen-cli.py
                 ln -sf $out/libexec/hp-manager/omen-cli.py $out/bin/omen
+              fi
+              if [ -f src/omen-tray.py ]; then
+                cp src/omen-tray.py $out/libexec/hp-manager/
+                chmod +x $out/libexec/hp-manager/omen-tray.py
+                sed -i "1s|.*|#!${pythonEnv}/bin/python|" $out/libexec/hp-manager/omen-tray.py
+                ln -sf $out/libexec/hp-manager/omen-tray.py $out/bin/omen-tray
               fi
 
               # System files

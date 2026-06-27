@@ -2,7 +2,7 @@
 
 pkgname=hp-laptop-manager-git
 _pkgname=HP-Laptop-Manager
-pkgver=1.5.3
+pkgver=1.6.0_preview
 pkgrel=1
 pkgdesc="Advanced HP Omen/Victus laptop manager for Linux with RGB, Fan, and MUX control"
 arch=('x86_64')
@@ -37,6 +37,12 @@ package() {
   # Daemon files
   cp -r src/daemon/* "$pkgdir/usr/libexec/hp-manager/"
 
+  # CLI and Tray files
+  cp src/omen-cli.py "$pkgdir/usr/libexec/hp-manager/"
+  chmod +x "$pkgdir/usr/libexec/hp-manager/omen-cli.py"
+  cp src/omen-tray.py "$pkgdir/usr/libexec/hp-manager/"
+  chmod +x "$pkgdir/usr/libexec/hp-manager/omen-tray.py"
+
   # GUI files
   cp -r src/gui/* "$pkgdir/usr/share/hp-manager/gui/"
   cp -r images/* "$pkgdir/usr/share/hp-manager/images/"
@@ -62,6 +68,8 @@ exec python3 /usr/share/hp-manager/gui/main_window.py "\$@"
 EOF
   chmod +x "$pkgdir/usr/bin/hp-manager"
   ln -sf hp-manager "$pkgdir/usr/bin/omenctl"
+  ln -sf /usr/libexec/hp-manager/omen-cli.py "$pkgdir/usr/bin/omen"
+  ln -sf /usr/libexec/hp-manager/omen-tray.py "$pkgdir/usr/bin/omen-tray"
 
   # DKMS Driver
   _dkms_dir="$pkgdir/usr/src/hp-rgb-lighting-${pkgver}"
