@@ -1983,6 +1983,10 @@ class FanPage(Gtk.Box):
         available = fan_info.get("available", False)
         self.fan_warning.set_visible(not available)
 
+        # Check custom mode support
+        supports_custom = fan_info.get("supports_custom", True)
+        self.fan_control_custom_btn.set_visible(supports_custom)
+
         return True
 
     def _update_sensor_list(self, sensors):

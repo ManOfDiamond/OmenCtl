@@ -116,6 +116,13 @@ static const struct thermal_profile_params victus_s_thermal_params = {
 	.ec_tp_offset = HP_EC_OFFSET_UNKNOWN,
 };
 
+static const struct thermal_profile_params victus_s_known_ec_thermal_params = {
+	.performance  = HP_VICTUS_S_THERMAL_PROFILE_PERFORMANCE,
+	.balanced     = HP_VICTUS_S_THERMAL_PROFILE_DEFAULT,
+	.low_power    = HP_VICTUS_S_THERMAL_PROFILE_DEFAULT,
+	.ec_tp_offset = HP_VICTUS_S_EC_THERMAL_PROFILE_OFFSET,
+};
+
 static const struct thermal_profile_params omen_v1_thermal_params = {
 	.performance  = HP_OMEN_V1_THERMAL_PROFILE_PERFORMANCE,
 	.balanced     = HP_OMEN_V1_THERMAL_PROFILE_DEFAULT,
@@ -268,7 +275,7 @@ static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst 
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8C99")},
-		.driver_data = (void *)&victus_s_thermal_params,
+		.driver_data = (void *)&victus_s_known_ec_thermal_params,
 	},
 	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8C9C")},
@@ -941,33 +948,51 @@ static int hp_wmi_fan_speed_set(struct hp_wmi_hwmon_priv *priv,
 				    HPWMI_GM, &fan_speed, sizeof(fan_speed), 0);
 }
 
+static bool is_victus_thermal_profile(void);
+static bool is_victus_s_thermal_profile(void);
+static int platform_profile_omen_set_ec(enum platform_profile_option profile);
+static int platform_profile_victus_set_ec(enum platform_profile_option profile);
+static int platform_profile_victus_s_set_ec(enum platform_profile_option profile);
+static int thermal_profile_get(void);
+static int thermal_profile_set(int thermal_profile);
+
 /*
  * hp_wmi_fan_speed_reset - hand fan control back to the EC.
  *
- * Disables max-fan mode, then sends 0 RPM so the EC resumes automatic
- * control.  Intentionally does NOT call
- * hp_wmi_get_fan_count_userdefine_trigger() so that we do not
- * accidentally re-enter user-defined mode while trying to leave it.
+ * Disables max-fan mode, then re-applies the active platform profile so the EC
+ * instantly resumes automatic control without waiting for the watchdog timeout.
  */
 static int hp_wmi_fan_speed_reset(struct hp_wmi_hwmon_priv *priv)
 {
-	u8 fan_speed[2] = {0, 0};
 	int ret;
 
 	ret = hp_wmi_fan_speed_max_set(0);
 	if (ret)
 		return ret;
 
-	/*
-	 * On Victus S-series the EC requires an explicit zero-RPM command to
-	 * resume automatic control.  On other devices only clearing the max-fan
-	 * flag is sufficient; sending the victus_s command would fail.
-	 */
 	if (!priv->fan_speed_available)
 		return 0;
 
-	return hp_wmi_perform_query(HPWMI_VICTUS_S_FAN_SPEED_SET_QUERY,
-				    HPWMI_GM, &fan_speed, sizeof(fan_speed), 0);
+	/*
+	 * Previously, an explicit zero-RPM command (HPWMI_VICTUS_S_FAN_SPEED_SET_QUERY)
+	 * was sent here. However, sending {0, 0} causes the EC to remain in manual mode
+	 * at 0 RPM for up to 120 seconds until the internal watchdog times out, leaving
+	 * the fans completely stopped even under heavy load.
+	 *
+	 * To force the EC to instantly release manual override and resume automatic
+	 * fan control without waiting for the watchdog timeout, we re-apply the active
+	 * thermal profile via HPWMI_SET_PERFORMANCE_MODE.
+	 */
+	if (is_omen_thermal_profile())
+		platform_profile_omen_set_ec(active_platform_profile);
+	else if (is_victus_thermal_profile())
+		platform_profile_victus_set_ec(active_platform_profile);
+	else if (is_victus_s_thermal_profile())
+		platform_profile_victus_s_set_ec(active_platform_profile);
+	else
+		thermal_profile_set(thermal_profile_get());
+
+	return 0;
 }
 
 /*
@@ -2876,11 +2901,15 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 				ret = -EINVAL;
 				break;
 			}
-			rpm = pwm_to_rpm(val, priv);
-			rpm = clamp_val(rpm, priv->min_rpm, priv->max_rpm);
+			if (val == 0) {
+				rpm = 0;
+			} else {
+				rpm = pwm_to_rpm(val, priv);
+				rpm = clamp_val(rpm, priv->min_rpm, priv->max_rpm);
+			}
 			priv->target_rpms[0] = (u16)rpm * 100;
-			priv->target_rpms[1] = (u16)(rpm + priv->gpu_delta) * 100;
-			priv->pwm = rpm_to_pwm(rpm, priv);
+			priv->target_rpms[1] = (u16)(rpm > 0 ? (rpm + priv->gpu_delta) * 100 : 0);
+			priv->pwm = val;
 			ret = hp_wmi_apply_fan_settings(priv);
 			break;
 		}
@@ -2897,6 +2926,9 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 				ret = -EOPNOTSUPP;
 				break;
 			}
+			if (priv->mode == PWM_MODE_MANUAL)
+				break; /* already in MANUAL, preserve target_rpms */
+
 			/*
 			 * Seed target RPMs from the current fan speed so the
 			 * transition to manual mode is smooth.
@@ -2904,6 +2936,7 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 			rpm = hp_wmi_get_fan_speed_victus_s(0);
 			if (rpm >= 0)
 				priv->target_rpms[0] = rpm;
+
 			rpm = hp_wmi_get_fan_speed_victus_s(1);
 			if (rpm >= 0)
 				priv->target_rpms[1] = rpm;
@@ -2952,12 +2985,14 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 			ret = -EOPNOTSUPP;
 			break;
 		}
-		if (channel < 0 || channel > 1 ||
-		    val < 0 || val > priv->max_rpms[channel]) {
+		if (channel < 0 || channel > 1 || val < 0) {
 			ret = -EINVAL;
 			break;
 		}
+		val = clamp_val(val, 0, priv->max_rpms[channel]);
 		priv->target_rpms[channel] = val;
+		if (priv->target_rpms[channel ^ 1] == 0)
+			priv->target_rpms[channel ^ 1] = val;
 		priv->mode = PWM_MODE_MANUAL;
 		ret = hp_wmi_apply_fan_settings(priv);
 		break;
@@ -3056,11 +3091,19 @@ static int hp_wmi_setup_fan_settings(struct hp_wmi_hwmon_priv *priv)
 	 * that are not yet in victus_s_thermal_profile_boards but whose
 	 * firmware does support the Victus S GM commands.
 	 */
-	if (is_omen_thermal_profile() && !is_victus_s_thermal_profile())
+	if (is_omen_thermal_profile() && !is_victus_s_thermal_profile()) {
+		pr_info("Omen board detected, setting fallback fan speed limits for manual mode\n");
+		hp_wmi_set_fallback_fan_limits(priv);
 		return 0;
+	}
 
-	if (!is_victus_s_thermal_profile())
+	if (!is_victus_s_thermal_profile()) {
+		if (force_fan_control_support) {
+			pr_info("Forcing fan control support on non-Victus-S board\n");
+			hp_wmi_set_fallback_fan_limits(priv);
+		}
 		return 0;
+	}
 
 	ret = hp_wmi_perform_query(HPWMI_VICTUS_S_GET_FAN_TABLE_QUERY, HPWMI_GM,
 				   &fan_data, 4, sizeof(fan_data));

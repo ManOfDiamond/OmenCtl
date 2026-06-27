@@ -48,6 +48,7 @@ class FanController:
         self.max_speeds = {}
         self.mode = "auto"
         self._fallback_paths = {}
+        self._last_targets = {}
         if self.hwmon_path:
             self._detect_fans()
             self._read_max_speeds()
@@ -125,8 +126,6 @@ class FanController:
     def _read_current_mode(self):
         if not self.hwmon_path:
             return
-        if self.mode in ("custom", "max"):
-            return
         pwm_path = os.path.join(self.hwmon_path, "pwm1_enable")
         val = sysfs_read(pwm_path, 2)
         if val == 0:
@@ -138,6 +137,14 @@ class FanController:
         # pwm1_enable == 2 means auto; don't use platform_profile fallback
         # because "performance" power profile ≠ "max" fan mode.
         self.mode = "auto"
+
+    def supports_custom_mode(self):
+        if self.hwmon_path:
+            if sysfs_exists(os.path.join(self.hwmon_path, "fan1_target")) or sysfs_exists(os.path.join(self.hwmon_path, "pwm1")):
+                return True
+        if self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            return True
+        return False
 
     # ── read ──────────────────────────────────────────────────────────
 
@@ -254,6 +261,19 @@ class FanController:
             logger.debug("set_fan_target: invalid fan_num=%s", fan_num)
             return False
         rpm = max(0, min(rpm, self.get_max_speed(fan_num)))
+
+        # Mode recovery: ensure pwm1_enable is 1 before writing target RPM
+        if self.hwmon_path:
+            pwm_path = os.path.join(self.hwmon_path, "pwm1_enable")
+            if sysfs_exists(pwm_path) and sysfs_read(pwm_path, 2) != 1:
+                sysfs_write(pwm_path, 1)
+                self.mode = "custom"
+
+        # Avoid WMI flooding if target RPM hasn't changed meaningfully (>100 RPM)
+        last_rpm = self._last_targets.get(fan_num, -1)
+        if last_rpm >= 0 and abs(rpm - last_rpm) < 100:
+            return True
+
         path = os.path.join(self.hwmon_path, f"fan{fan_num}_target") if self.hwmon_path else None
         if path and sysfs_exists(path):
             ok = sysfs_write(path, rpm)
@@ -272,6 +292,7 @@ class FanController:
             return False
 
         if ok:
+            self._last_targets[fan_num] = rpm
             logger.info("Fan %d target set to %d RPM", fan_num, rpm)
         else:
             logger.debug("Fan %d target set to %d RPM failed", fan_num, rpm)
@@ -312,6 +333,40 @@ class FanController:
 # ─── D-Bus Service ────────────────────────────────────────────────────────────
 
 import json
+import subprocess
+
+
+def send_desktop_notification(title, message):
+    """Send desktop notification to active user sessions."""
+    try:
+        # Find active user sessions by inspecting active X11/Wayland processes
+        for p in glob.glob("/proc/*/environ"):
+            try:
+                with open(p, "rb") as f:
+                    content = f.read()
+                if b"DISPLAY=" in content or b"WAYLAND_DISPLAY=" in content:
+                    env = {}
+                    for item in content.split(b"\0"):
+                        if b"=" in item:
+                            k, v = item.split(b"=", 1)
+                            env[k.decode("utf-8", "ignore")] = v.decode("utf-8", "ignore")
+                    user = env.get("USER") or env.get("LOGNAME")
+                    display = env.get("DISPLAY") or ":0"
+                    dbus_addr = env.get("DBUS_SESSION_BUS_ADDRESS")
+                    xdg_runtime = env.get("XDG_RUNTIME_DIR")
+                    if user and (dbus_addr or xdg_runtime):
+                        cmd = ["sudo", "-u", user, "env", f"DISPLAY={display}"]
+                        if dbus_addr:
+                            cmd.append(f"DBUS_SESSION_BUS_ADDRESS={dbus_addr}")
+                        if xdg_runtime:
+                            cmd.append(f"XDG_RUNTIME_DIR={xdg_runtime}")
+                        cmd.extend(["notify-send", "-u", "critical", "-a", "OmenCtl", title, message])
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2.0)
+                        break
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug("Failed to send desktop notification: %s", e)
 
 
 class FanService:
@@ -334,6 +389,8 @@ class FanService:
 
         self._cache_lock = threading.Lock()
         self._fan_cache = {}
+        self._thermal_protection_active = False
+        self._pre_protection_mode = None
 
         # Restore saved fan mode
         self._restore_fan_mode()
@@ -398,13 +455,43 @@ class FanService:
                 time.sleep(0.5)
                 continue
 
+            temp = self._get_max_temp()
+
+            # Thermal Protection Mode
+            if temp > 95.0 and not self._thermal_protection_active:
+                logger.warning("Temperature exceeded 95°C (%d°C). Activating Thermal Protection Mode (Max Fan).", temp)
+                self._thermal_protection_active = True
+                self._pre_protection_mode = self._config.get("fan_mode", self._fan.get_mode())
+                self._fan.set_mode("max")
+                send_desktop_notification(
+                    "OmenCtl Koruma Modu",
+                    "Yüksek sıcaklıklardan cihazınızı korumak için max fan modu aktif edildi."
+                )
+            elif self._thermal_protection_active:
+                if temp <= 50.0:
+                    logger.info("Temperature dropped to %d°C. Deactivating Thermal Protection Mode.", temp)
+                    self._thermal_protection_active = False
+                    restore = self._pre_protection_mode or "auto"
+                    self._fan.set_mode(restore)
+                    send_desktop_notification(
+                        "OmenCtl Koruma Modu",
+                        f"Sıcaklık normale döndü ({int(temp)}°C). Fanlar eski moduna ({restore}) geri getirildi."
+                    )
+                else:
+                    # Keep ensuring max mode while protection is active
+                    if self._fan.get_mode() != "max":
+                        self._fan.set_mode("max")
+
             mode = self._fan.get_mode()
             custom_curve_str = self._config.get("custom_curve", "[]")
-            if mode == "custom":
+
+            if mode == "custom" and not self._thermal_protection_active:
                 try:
                     curve = json.loads(custom_curve_str)
+                    if not curve or len(curve) == 0:
+                        # Fallback default safe curve if empty
+                        curve = [[40, 30], [60, 50], [80, 80], [90, 100]]
                     if curve and len(curve) > 0:
-                        temp = self._get_max_temp()
                         pct = self._curve_fan_pct(curve, temp)
                         for i in self._fan.found_fans:
                             max_rpm = self._fan.get_max_speed(i)
@@ -425,8 +512,10 @@ class FanService:
                 "available": self._fan.is_available(),
                 "fan_count": self._fan.get_fan_count(),
                 "mode": mode,
+                "supports_custom": self._fan.supports_custom_mode(),
                 "custom_curve": custom_curve_str,
                 "fans": fans_data,
+                "thermal_protection": self._thermal_protection_active,
             }
 
             with self._cache_lock:
@@ -438,6 +527,12 @@ class FanService:
 
     def SetFanMode(self, mode):
         logger.info("SetFanMode: %s", mode)
+        if self._thermal_protection_active:
+            logger.info("Thermal protection is active. Recording target mode '%s' for post-protection restoration.", mode)
+            self._pre_protection_mode = mode
+            self._config.set("fan_mode", mode)
+            self._config.save()
+            return "OK"
         if self._fan.get_mode() == mode and self._config.get("fan_mode") == mode:
             return "OK"
         ok = self._fan.set_mode(mode)
