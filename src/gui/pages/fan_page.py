@@ -703,8 +703,9 @@ class FanPage(Gtk.Box):
         self._pending_power_started = 0.0
         self._sensor_labels = {}
         self.is_dark = True
-        self.fan_control_level = 1
-        self.fan_control_mode = "performance"
+        self.fan_control_level = 0
+        self.fan_control_mode = "auto"
+        self._fan_mode_synced = False
         self.fan_curve_editor_open = False
 
         self._css_provider = Gtk.CssProvider()
@@ -1794,8 +1795,8 @@ class FanPage(Gtk.Box):
 
                     target_rpm = int(max_rpm * fan_pct / 100)
                     last = self.last_applied_rpm.get(str(fn), -1)
-                    # Increased deadband threshold to 400 RPM to filter small jitter commands
-                    if last >= 0 and abs(target_rpm - last) < 400:
+                    # Increased deadband threshold to 200 RPM to filter small jitter commands
+                    if last >= 0 and abs(target_rpm - last) < 200:
                         continue
 
                     self.last_applied_rpm[str(fn)] = target_rpm
@@ -1827,6 +1828,35 @@ class FanPage(Gtk.Box):
         sensors = data.get("all_sensors", [])
         gpu_tgp_state = data.get("gpu_tgp_state", False)
         gpu_ppab_state = data.get("gpu_ppab_state", False)
+
+        # On first refresh, sync fan control mode from daemon's actual state
+        if not self._fan_mode_synced and fan_info:
+            daemon_mode = fan_info.get("mode", "auto")
+            if daemon_mode == "auto":
+                self.fan_control_level = 0
+                self.fan_control_mode = "auto"
+                self._sync_fan_control_buttons(0)
+                self._set_custom_button_active(False)
+            elif daemon_mode == "max":
+                self.fan_control_level = 2
+                self.fan_control_mode = "max"
+                self._sync_fan_control_buttons(2)
+                self._set_custom_button_active(False)
+            elif daemon_mode == "custom":
+                saved_curve_json = fan_info.get("custom_curve", "[]")
+                try:
+                    import json as _json
+                    saved_curve = _json.loads(saved_curve_json)
+                    if saved_curve and len(saved_curve) > 0:
+                        self.custom_points = [(p[0], p[1]) for p in saved_curve]
+                except Exception:
+                    pass
+                self.fan_control_level = 3
+                self.fan_control_mode = "custom"
+                self._sync_fan_control_buttons(3)
+                self._set_custom_button_active(True)
+            self._fan_mode_synced = True
+            print(f"Fan mode synced from daemon: {daemon_mode} (level={self.fan_control_level})")
 
         if not getattr(self, "_custom_curve_loaded", False):
             saved_curve_json = fan_info.get("custom_curve", "[]")

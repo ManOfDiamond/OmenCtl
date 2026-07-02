@@ -30,7 +30,7 @@ from common.ec_controller import LinuxEcController
 logger = setup_logging("fan")
 
 PWM_MAX = 255
-PWM_FALLBACK_MIN = 220
+PWM_FALLBACK_MIN = 50
 THERMAL_PROFILE_BALANCED = 0
 THERMAL_PROFILE_MAX = 1
 
@@ -251,6 +251,7 @@ class FanController:
 
         if ok:
             self.mode = mode
+            self._last_targets.clear()
             logger.info("Fan mode set to %s", mode)
         else:
             logger.warning("Failed to set fan mode to %s (all paths failed)", mode)
@@ -390,6 +391,7 @@ class FanService:
         self._cache_lock = threading.Lock()
         self._fan_cache = {}
         self._thermal_protection_active = False
+        self._thermal_protection_entered_at = 0.0
         self._pre_protection_mode = None
 
         # Restore saved fan mode
@@ -410,29 +412,74 @@ class FanService:
             else:
                 logger.info("Fan mode already '%s', skipping write", saved)
 
+    # Known CPU/GPU hwmon driver names for targeted temperature reading
+    _CPU_GPU_DRIVERS = frozenset({
+        "coretemp", "k10temp", "zenpower", "cpu_thermal",  # CPU
+        "amdgpu", "nvidia", "nouveau", "radeon",            # GPU
+        "hp", "hp-omen",                                    # HP WMI (reports CPU/GPU)
+    })
+
     def _get_max_temp(self):
-        max_t = 0.0
+        """Read the highest CPU/GPU temperature.
+
+        Prefer sensors from known CPU/GPU drivers to avoid phantom readings
+        from NVMe, VRM, ACPI, or other unrelated hwmon devices.
+        Falls back to all sensors only if no known driver is found.
+        """
+        cpu_gpu_max = 0.0
+        all_max = 0.0
+        found_known_driver = False
+
         try:
-            for path in glob.glob("/sys/class/hwmon/hwmon*/temp*_input"):
+            for hwmon_dir in glob.glob("/sys/class/hwmon/hwmon*/"):
+                # Identify the driver name for this hwmon device
+                name_path = os.path.join(hwmon_dir, "name")
+                driver_name = ""
                 try:
-                    with open(path) as f:
-                        t = int(f.read().strip()) / 1000.0
-                        if 0 < t < 120 and t > max_t:
-                            max_t = t
+                    with open(name_path) as f:
+                        driver_name = f.read().strip().lower()
                 except Exception:
                     pass
-            if max_t == 0:
-                for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+
+                is_known = driver_name in self._CPU_GPU_DRIVERS
+                if is_known:
+                    found_known_driver = True
+
+                for temp_path in glob.glob(os.path.join(hwmon_dir, "temp*_input")):
                     try:
-                        with open(path) as f:
+                        with open(temp_path) as f:
                             t = int(f.read().strip()) / 1000.0
-                            if 0 < t < 120 and t > max_t:
-                                max_t = t
+                            if 0 < t < 120:
+                                if is_known and t > cpu_gpu_max:
+                                    cpu_gpu_max = t
+                                if t > all_max:
+                                    all_max = t
                     except Exception:
                         pass
         except Exception:
             pass
-        return max_t or 45.0
+
+        # Prefer CPU/GPU-specific reading; fall back to all sensors
+        if found_known_driver and cpu_gpu_max > 0:
+            return cpu_gpu_max
+
+        if all_max > 0:
+            return all_max
+
+        # Last resort: thermal zones
+        try:
+            for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+                try:
+                    with open(path) as f:
+                        t = int(f.read().strip()) / 1000.0
+                        if 0 < t < 120 and t > all_max:
+                            all_max = t
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return all_max or 45.0
 
     def _curve_fan_pct(self, points, temp):
         if not points:
@@ -461,6 +508,7 @@ class FanService:
             if temp > 95.0 and not self._thermal_protection_active:
                 logger.warning("Temperature exceeded 95°C (%d°C). Activating Thermal Protection Mode (Max Fan).", temp)
                 self._thermal_protection_active = True
+                self._thermal_protection_entered_at = time.monotonic()
                 self._pre_protection_mode = self._config.get("fan_mode", self._fan.get_mode())
                 self._fan.set_mode("max")
                 send_desktop_notification(
@@ -468,9 +516,19 @@ class FanService:
                     "Yüksek sıcaklıklardan cihazınızı korumak için max fan modu aktif edildi."
                 )
             elif self._thermal_protection_active:
-                if temp <= 50.0:
-                    logger.info("Temperature dropped to %d°C. Deactivating Thermal Protection Mode.", temp)
+                elapsed = time.monotonic() - self._thermal_protection_entered_at
+                # Exit conditions:
+                # 1. Temperature dropped below 85°C (10°C hysteresis from 95°C entry), OR
+                # 2. Protection active >5 minutes AND temp below 90°C (timeout safety net)
+                should_exit = temp <= 85.0 or (elapsed > 300.0 and temp <= 90.0)
+
+                if should_exit:
+                    if elapsed > 300.0:
+                        logger.info("Thermal Protection timeout after %.0fs (temp=%d°C). Deactivating.", elapsed, temp)
+                    else:
+                        logger.info("Temperature dropped to %d°C. Deactivating Thermal Protection Mode.", temp)
                     self._thermal_protection_active = False
+                    self._thermal_protection_entered_at = 0.0
                     restore = self._pre_protection_mode or "auto"
                     self._fan.set_mode(restore)
                     send_desktop_notification(
