@@ -1589,7 +1589,7 @@ class FanPage(Gtk.Box):
 
         fan_modes = {
             0: ("auto", None),
-            1: ("custom", None),
+            1: ("performance", None),
             2: ("max", None),   # Max mode is handled entirely by driver/BIOS
         }
         fan_mode, fan_pct = fan_modes.get(level, ("auto", None))
@@ -1616,7 +1616,7 @@ class FanPage(Gtk.Box):
                             target_rpm = int(max_rpm * fan_pct / 100)
                             _dbus_call(self.service.SetFanTarget, int(str(fn)), target_rpm)
                     elif level == 1:
-                        self._set_daemon_fan_mode("custom")
+                        self._set_daemon_fan_mode("performance")
                         self._apply_fan_curve(points=self.performance_points)
             except Exception as e:
                 print(f"Fan control preset error: {e}")
@@ -1855,6 +1855,11 @@ class FanPage(Gtk.Box):
                 self.fan_control_mode = "custom"
                 self._sync_fan_control_buttons(3)
                 self._set_custom_button_active(True)
+            elif daemon_mode == "performance":
+                self.fan_control_level = 1
+                self.fan_control_mode = "performance"
+                self._sync_fan_control_buttons(1)
+                self._set_custom_button_active(False)
             self._fan_mode_synced = True
             print(f"Fan mode synced from daemon: {daemon_mode} (level={self.fan_control_level})")
 

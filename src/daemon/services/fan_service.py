@@ -190,7 +190,7 @@ class FanController:
     # ── write ─────────────────────────────────────────────────────────
 
     def set_mode(self, mode):
-        val = {"auto": 2, "max": 0, "custom": 1}.get(mode)
+        val = {"auto": 2, "max": 0, "custom": 1, "performance": 1}.get(mode)
         if val is None:
             return False
 
@@ -541,9 +541,17 @@ class FanService:
                         self._fan.set_mode("max")
 
             mode = self._fan.get_mode()
+            
+            # Hardware only knows "custom", but we want to expose "performance" 
+            # to the UI if it was requested via DBus
+            if mode == "custom":
+                stored_mode = self._config.get("fan_mode")
+                if stored_mode == "performance":
+                    mode = "performance"
+                    
             custom_curve_str = self._config.get("custom_curve", "[]")
 
-            if mode == "custom" and not self._thermal_protection_active:
+            if mode in ("custom", "performance") and not self._thermal_protection_active:
                 try:
                     curve = json.loads(custom_curve_str)
                     if not curve or len(curve) == 0:
