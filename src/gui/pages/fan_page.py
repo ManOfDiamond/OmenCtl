@@ -1435,6 +1435,7 @@ class FanPage(Gtk.Box):
         
         self.default_points = [(48, 0), (58, 35), (70, 60), (78, 72), (85, 100)]
         self.performance_points = [(35, 0), (50, 45), (65, 70), (75, 90), (82, 100)]
+        self.auto_points = [(40, 0), (55, 30), (65, 45), (75, 65), (85, 100)]
         self.custom_points = list(self.default_points)
 
         # Set default active state
@@ -1766,7 +1767,15 @@ class FanPage(Gtk.Box):
             effective_temp = avg_temp
             self.last_applied_temp = avg_temp
 
-        active_points = points or (self.performance_points if self.fan_control_mode == "performance" else self.custom_points)
+        if points:
+            active_points = points
+        elif self.fan_control_mode == "performance":
+            active_points = self.performance_points
+        elif self.fan_control_mode == "auto":
+            active_points = getattr(self, "auto_points", [(40, 0), (55, 30), (65, 45), (75, 65), (85, 100)])
+        else:
+            active_points = self.custom_points
+
         rpm_floor = 2000 if self.fan_control_mode == "performance" else None
         fan_max = None
 
@@ -1780,7 +1789,11 @@ class FanPage(Gtk.Box):
                     return
                     
                 # Ensure daemon is in the correct curve-based mode
-                expected_mode = self.fan_control_mode  # "performance" or "custom"
+                # For software fan curves, the daemon must be in 'custom' or 'performance' (pwm1_enable=1)
+                expected_mode = self.fan_control_mode
+                if expected_mode == "auto":
+                    expected_mode = "custom" # Force daemon to manual mode so we can write targets
+
                 current_mode = info.get("mode", "")
                 if current_mode != expected_mode:
                     self._set_daemon_fan_mode(expected_mode)
@@ -1905,7 +1918,7 @@ class FanPage(Gtk.Box):
         self.bat_bridge.set_val(bat_pct, bat_text)
 
         # Apply fan curve if manual custom fan mode is enabled
-        if self.fan_control_mode in ("custom", "performance"):
+        if self.fan_control_mode in ("custom", "performance", "auto"):
             self._apply_fan_curve()
 
         # Rebuild mode selector dynamically matching available WMI/ACPI profiles
