@@ -19,7 +19,7 @@ def T(k):
     return _T(k)
 
 
-APP_VERSION = "1.6.0-preview"
+APP_VERSION = "1.6.1"
 GITHUB_REPO = "yunusemreyl/OmenCtl"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -636,6 +636,32 @@ class SettingsPage(Gtk.Box):
         copy_btn.set_child(copy_inner)
         debug_card.append(copy_btn)
 
+        debug_card.append(self._make_sep())
+
+        # Create GitHub Issue button cell
+        github_btn = Gtk.Button()
+        github_btn.add_css_class("settings-row")
+        github_btn.connect("clicked", self._create_github_issue)
+
+        github_inner = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
+
+        self._debug_github_icon = None
+
+        github_text_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
+        self.github_btn_label = Gtk.Label(label=f"🐛  {T('create_github_issue')}", xalign=0, halign=Gtk.Align.START)
+        self.github_btn_label.add_css_class("settings-row-label")
+        github_text_col.append(self.github_btn_label)
+        github_sub = Gtk.Label(label=T("github_issue_desc"), xalign=0, halign=Gtk.Align.START)
+        github_sub.add_css_class("settings-row-sublabel")
+        github_text_col.append(github_sub)
+        github_inner.append(github_text_col)
+
+        chevron3 = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chevron3.add_css_class("chevron-arrow")
+        github_inner.append(chevron3)
+        github_btn.set_child(github_inner)
+        debug_card.append(github_btn)
+
         content.append(debug_card)
 
         # ══════════════════════════════════════════════════════════════════════
@@ -772,7 +798,8 @@ class SettingsPage(Gtk.Box):
                 btn.set_size_request(-1, btn_h)
 
         for icon in (getattr(self, "_debug_term_icon", None),
-                     getattr(self, "_debug_copy_icon", None)):
+                     getattr(self, "_debug_copy_icon", None),
+                     getattr(self, "_debug_github_icon", None)):
             if icon is not None and hasattr(icon, 'set_pixel_size'):
                 icon.set_pixel_size(icon_sz)
 
@@ -967,7 +994,7 @@ class SettingsPage(Gtk.Box):
             setup_script = os.path.join(src_dir, "setup.sh")
             if os.path.exists(setup_script):
                 os.chmod(setup_script, 0o755)
-                cmd = ["pkexec", "bash", setup_script, "update"]
+                cmd = ["pkexec", "bash", "-c", f"cd '{src_dir}' && bash setup.sh update"]
             else:
                 # Fallback for older versions
                 install_script = os.path.join(src_dir, "update.sh")
@@ -976,7 +1003,7 @@ class SettingsPage(Gtk.Box):
                     if not os.path.exists(install_script):
                         raise RuntimeError(f"setup.sh or update.sh not found in {src_dir}")
                 os.chmod(install_script, 0o755)
-                cmd = ["pkexec", "bash", install_script]
+                cmd = ["pkexec", "bash", "-c", f"cd '{src_dir}' && bash '{os.path.basename(install_script)}'"]
 
             GLib.idle_add(self._install_progress, 0.6, T("installing_update"))
 
@@ -1184,128 +1211,612 @@ class SettingsPage(Gtk.Box):
         win.present()
         
     def _gather_debug_info(self):
-        import platform, subprocess, os, glob
-        out = [f"--- DEBUG INFO (v{APP_VERSION}) ---"]
-        
-        # 1. DMI Data
-        board_id = "Unknown"
-        try:
-            if os.path.exists("/sys/class/dmi/id/board_name"):
-                with open("/sys/class/dmi/id/board_name", "r") as f:
-                    board_id = f.read().strip()
-                out.append(f"Board ID: {board_id}")
-            if os.path.exists("/sys/class/dmi/id/product_name"):
-                with open("/sys/class/dmi/id/product_name", "r") as f:
-                    out.append(f"Product Name: {f.read().strip()}")
-        except: pass
+        import platform, subprocess, os, glob, re
+        out = [f"{'='*60}", f"  OmenCtl System Diagnostic Report (v{APP_VERSION})", f"{'='*60}", ""]
 
-        # 2. WMI GUIDs
+        # ── Helper ───────────────────────────────────────────────────
+        def _read_dmi(name, default="N/A"):
+            for prefix in ("/sys/class/dmi/id/", "/sys/devices/virtual/dmi/id/"):
+                path = prefix + name
+                try:
+                    if os.path.exists(path):
+                        with open(path) as f:
+                            return f.read().strip()
+                except Exception:
+                    pass
+            return default
+
+        def _read_sysfs(path, default="N/A"):
+            try:
+                if os.path.exists(path):
+                    with open(path) as f:
+                        return f.read().strip()
+            except Exception:
+                pass
+            return default
+
+        def _run_cmd(cmd, timeout=3):
+            try:
+                return subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=timeout).decode(errors='ignore').strip()
+            except Exception:
+                return ""
+
+        # ── 1. System Information ────────────────────────────────────
+        board_id = _read_dmi("board_name", "Unknown")
+        product_name = _read_dmi("product_name", "Unknown")
+        bios_version = _read_dmi("bios_version", "Unknown")
+        bios_date = _read_dmi("bios_date", "Unknown")
+        board_vendor = _read_dmi("board_vendor", "Unknown")
+
+        out.append("── SYSTEM INFORMATION ──")
+        out.append(f"  Board ID       : {board_id}")
+        out.append(f"  Product Name   : {product_name}")
+        out.append(f"  Board Vendor   : {board_vendor}")
+        out.append(f"  BIOS Version   : {bios_version}")
+        out.append(f"  BIOS Date      : {bios_date}")
+        out.append(f"  Kernel         : {platform.release()}")
+        out.append(f"  OS             : {self._get_distro()}")
+        out.append(f"  Architecture   : {platform.machine()}")
+
+        # Secure Boot
+        secure_boot = "Unknown"
+        try:
+            for sb_path in glob.glob("/sys/firmware/efi/efivars/SecureBoot-*"):
+                with open(sb_path, "rb") as f:
+                    data = f.read()
+                    secure_boot = "Enabled" if data[-1] == 1 else "Disabled"
+                    break
+        except Exception:
+            pass
+        out.append(f"  Secure Boot    : {secure_boot}")
+        out.append("")
+
+        # ── 2. Capabilities Database Match ───────────────────────────
+        out.append("── CAPABILITIES DATABASE ──")
+        try:
+            import sys as _sys
+            _daemon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "daemon"))
+            if _daemon_path not in _sys.path:
+                _sys.path.insert(0, _daemon_path)
+            from common.capabilities import KNOWN_MODELS, DEFAULT_CAPS
+            caps = KNOWN_MODELS.get(board_id.upper(), None)
+            if caps:
+                out.append(f"  DB Match       : ✓ {caps.model_name} ({caps.product_id})")
+                out.append(f"  Model Year     : {caps.model_year}")
+                out.append(f"  Family         : {caps.family}")
+                out.append(f"  Fan Control WMI: {caps.supports_fan_control_wmi}")
+                out.append(f"  Fan Control EC : {caps.supports_fan_control_ec}")
+                out.append(f"  Fan Curves     : {caps.supports_fan_curves}")
+                out.append(f"  MUX Switch     : {caps.has_mux_switch}")
+                out.append(f"  GPU Power Boost: {caps.supports_gpu_power_boost}")
+                if caps.notes:
+                    out.append(f"  Notes          : {caps.notes}")
+            else:
+                out.append(f"  DB Match       : ✗ Board ID '{board_id}' not in database")
+                out.append(f"  Using defaults : supports_fan_control_ec=False")
+        except Exception as e:
+            out.append(f"  DB Match       : Error loading capabilities ({e})")
+        out.append("")
+
+        # ── 3. ACPI / DSDT / SSDT Analysis ───────────────────────────
+        out.append("── ACPI TABLE ANALYSIS ──")
+
+        # List available ACPI tables
+        acpi_tables_path = "/sys/firmware/acpi/tables"
+        if os.path.exists(acpi_tables_path):
+            try:
+                tables = sorted(os.listdir(acpi_tables_path))
+                dsdt_found = "DSDT" in tables
+                ssdt_list = [t for t in tables if t.startswith("SSDT")]
+                out.append(f"  DSDT           : {'Present' if dsdt_found else 'Not Found'}")
+                out.append(f"  SSDT Tables    : {len(ssdt_list)} ({', '.join(ssdt_list[:8])}{'...' if len(ssdt_list) > 8 else ''})")
+                other_tables = [t for t in tables if t not in ("DSDT",) and not t.startswith("SSDT") and not t.startswith("dynamic")]
+                if other_tables:
+                    out.append(f"  Other Tables   : {', '.join(other_tables[:12])}")
+            except Exception as e:
+                out.append(f"  Table listing  : Error ({e})")
+        else:
+            out.append(f"  ACPI Tables    : {acpi_tables_path} not accessible")
+
+        # ACPI errors from dmesg
+        out.append("")
+        out.append("  ACPI Errors (dmesg):")
+        acpi_errors = []
+        try:
+            acpi_pattern = re.compile(
+                r'ACPI\s*(Error|Warning|Exception)|AE_AML_|WQBZ|WQBE|WMID|_SB\.WMID|'
+                r'AE_NOT_FOUND|AE_BAD_PARAMETER|AE_ALREADY_EXISTS|'
+                r'hp.wmi.*error|hp.wmi.*fail|thermal.*profile.*fail',
+                re.IGNORECASE
+            )
+            dmesg_out = ""
+            try:
+                dmesg_out = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL, timeout=5).decode(errors='ignore')
+            except Exception:
+                try:
+                    dmesg_out = subprocess.check_output(
+                        ['journalctl', '-k', '--no-pager', '-b'],
+                        stderr=subprocess.DEVNULL, timeout=5
+                    ).decode(errors='ignore')
+                except Exception:
+                    pass
+
+            if dmesg_out:
+                for line in dmesg_out.splitlines():
+                    if acpi_pattern.search(line):
+                        acpi_errors.append(line.strip())
+
+            if acpi_errors:
+                # Deduplicate similar errors, keep first 20
+                seen = set()
+                unique_errors = []
+                for err in acpi_errors:
+                    # Normalize timestamps for dedup
+                    normalized = re.sub(r'^\[[\s\d.]+\]\s*', '', err)
+                    if normalized not in seen:
+                        seen.add(normalized)
+                        unique_errors.append(err)
+                for err in unique_errors[:20]:
+                    out.append(f"    {err}")
+                if len(unique_errors) > 20:
+                    out.append(f"    ... ({len(unique_errors) - 20} more)")
+                out.append(f"  Total ACPI Errors: {len(unique_errors)}")
+            else:
+                out.append("    None detected ✓")
+        except Exception as e:
+            out.append(f"    Could not read dmesg/journal: {e}")
+        out.append("")
+
+        # ── 4. WMI Subsystem ─────────────────────────────────────────
+        out.append("── WMI SUBSYSTEM ──")
         guids = {
-            "95F24279-4D7B-4334-9387-ACCDC67EF61C": "WMI EVENT GUID",
-            "5FB7F034-2C63-45E9-BE91-3D44E2C707E4": "WMI BIOS GUID"
+            "95F24279-4D7B-4334-9387-ACCDC67EF61C": "HP WMI Event",
+            "5FB7F034-2C63-45E9-BE91-3D44E2C707E4": "HP WMI BIOS",
+            "2B814318-4BE8-4707-9D84-A190A859B5D0": "HP OMEN WMI",
         }
+        wmi_devices_path = "/sys/bus/wmi/devices/"
         for guid, name in guids.items():
             found = False
-            if os.path.exists("/sys/bus/wmi/devices/"):
-                for d in os.listdir("/sys/bus/wmi/devices/"):
-                    if guid.lower() in d.lower():
-                        found = True
-                        break
-            out.append(f"{name}: {'Found' if found else 'Not Found'}")
+            if os.path.exists(wmi_devices_path):
+                try:
+                    for d in os.listdir(wmi_devices_path):
+                        if guid.lower() in d.lower():
+                            found = True
+                            break
+                except Exception:
+                    pass
+            out.append(f"  {name:20s}: {'✓ Found' if found else '✗ Not Found'}")
+        out.append("")
 
-        # 3. Platform Profile
-        pp_path = "/sys/firmware/acpi/platform_profile"
-        if os.path.exists(pp_path):
-            out.append(f"Platform Profile Path: {pp_path}")
-            try:
-                with open(pp_path, "r") as f:
-                    out.append(f"Active Profile: {f.read().strip()}")
-            except: out.append("Active Profile: Read Error")
-        else:
-            out.append("Platform Profile: Not Supported")
-
-        # 4. Thermal Version (Heuristic)
-        v1_boards = ["8BAB", "8BCD", "8C77", "8E35", "8C78", "8C99", "8C9C", "8D41", "8BBE", "8BD4", "8BD5"] 
-        if board_id in v1_boards or os.path.exists(pp_path):
-            out.append("Thermal Version: 1 (Detected via DMI/Platform Profile)")
-        else:
-            out.append("Thermal Version: 0 (Legacy or Unknown)")
-
-        # 5. Hwmon / Fans
+        # ── 5. Fan / Thermal Sysfs Deep Scan ─────────────────────────
+        out.append("── FAN & THERMAL SYSFS ──")
         hwmon_found = False
-        for hdir in glob.glob("/sys/class/hwmon/hwmon*"):
+        for hdir in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
             try:
-                with open(os.path.join(hdir, "name"), "r") as f:
-                    if f.read().strip() == "hp":
-                        hwmon_found = True
-                        out.append(f"Hwmon Path: {hdir} (hp)")
-                        for fan_path in sorted(glob.glob(os.path.join(hdir, "fan*_input"))):
-                            fname = os.path.basename(fan_path)
-                            fnum = fname.split("_")[0].replace("fan", "")
-                            try:
-                                with open(fan_path, "r") as ff:
-                                    out.append(f"Fan {fnum} Speed: {ff.read().strip()} RPM")
-                            except: pass
-                        pwm_file = os.path.join(hdir, "pwm_enable")
-                        if os.path.exists(pwm_file):
-                            try:
-                                with open(pwm_file, "r") as pf:
-                                    out.append(f"PWM Control: {pf.read().strip()}")
-                            except: pass
-                        break
-            except: continue
+                name_val = _read_sysfs(os.path.join(hdir, "name"), "")
+                if name_val in ("hp", "hp-omen"):
+                    hwmon_found = True
+                    out.append(f"  Hwmon Path     : {hdir} (driver: {name_val})")
+
+                    # Fan inputs
+                    for fan_path in sorted(glob.glob(os.path.join(hdir, "fan*_input"))):
+                        fname = os.path.basename(fan_path)
+                        fnum = fname.replace("fan", "").replace("_input", "")
+                        rpm = _read_sysfs(fan_path, "?")
+                        fan_max = _read_sysfs(os.path.join(hdir, f"fan{fnum}_max"), "N/A")
+                        fan_target = _read_sysfs(os.path.join(hdir, f"fan{fnum}_target"), "N/A")
+                        out.append(f"  Fan {fnum}         : {rpm} RPM (max={fan_max}, target={fan_target})")
+
+                    # PWM files (comprehensive scan)
+                    for pwm_file in ("pwm1", "pwm1_enable", "pwm1_min", "pwm1_max"):
+                        pwm_path = os.path.join(hdir, pwm_file)
+                        if os.path.exists(pwm_path):
+                            val = _read_sysfs(pwm_path, "?")
+                            writable = os.access(pwm_path, os.W_OK)
+                            out.append(f"  {pwm_file:16s}: {val} {'(writable)' if writable else '(read-only)'}")
+                        else:
+                            out.append(f"  {pwm_file:16s}: NOT PRESENT")
+
+                    break
+            except Exception:
+                continue
         if not hwmon_found:
-            out.append("Hwmon (hp): Not Found")
+            out.append("  HP Hwmon       : ✗ Not Found")
 
-        # 6. Kernel Modules
-        out.append("\nLoaded Modules:")
+        # Platform/thermal profile paths
+        out.append("")
+        out.append("  Thermal Profile Paths:")
+        profile_paths = [
+            "/sys/firmware/acpi/platform_profile",
+            "/sys/devices/platform/hp-wmi/platform_profile",
+            "/sys/devices/platform/hp-wmi/thermal_profile",
+            "/sys/devices/platform/hp-omen/thermal_profile",
+        ]
+        for pp in profile_paths:
+            if os.path.exists(pp):
+                val = _read_sysfs(pp, "?")
+                # Also try to read available choices
+                choices_path = pp + "_choices" if "platform_profile" in pp else ""
+                choices = ""
+                if choices_path:
+                    choices_path_alt = pp.replace("platform_profile", "platform_profile_choices")
+                    choices = _read_sysfs(choices_path_alt, "")
+                    if choices == "N/A":
+                        choices = ""
+                extra = f" (choices: {choices})" if choices else ""
+                out.append(f"    ✓ {pp} = {val}{extra}")
+            else:
+                out.append(f"    ✗ {pp}")
+
+        # GPU power boost paths
+        out.append("")
+        out.append("  GPU Power Paths:")
+        for base in ("/sys/devices/platform/hp-wmi", "/sys/devices/platform/hp-omen"):
+            for attr in ("gpu_tgp", "gpu_ppab"):
+                p = f"{base}/{attr}"
+                if os.path.exists(p):
+                    out.append(f"    ✓ {p} = {_read_sysfs(p, '?')}")
+        out.append("")
+
+        # ── 6. EC Access State ───────────────────────────────────────
+        out.append("── EC ACCESS ──")
+        ec_path = "/sys/kernel/debug/ec/ec0/io"
+        ec_exists = os.path.exists(ec_path)
+        out.append(f"  EC sysfs path  : {ec_path}")
+        out.append(f"  EC accessible  : {'✓ Yes' if ec_exists else '✗ No'}")
+        # Check ec_sys module
+        ec_sys_loaded = False
         try:
-            lsmod_out = subprocess.check_output(["lsmod"], stderr=subprocess.DEVNULL, timeout=2).decode(errors='ignore')
-            for mod in ('hp_wmi', 'hp_rgb_lighting'):
-                out.append(f"  - {mod}: {'Yes' if mod in lsmod_out else 'No'}")
-        except: pass
+            with open("/proc/modules") as f:
+                ec_sys_loaded = "ec_sys" in f.read()
+        except Exception:
+            pass
+        out.append(f"  ec_sys module   : {'Loaded' if ec_sys_loaded else 'Not Loaded'}")
+        out.append("")
 
-        # 7. Service Status
-        out.append("\nService Status:")
+        # ── 7. Kernel Modules ────────────────────────────────────────
+        out.append("── KERNEL MODULES ──")
+        modules_to_check = [
+            "hp_wmi", "hp_rgb_lighting", "ec_sys", "wmi", "wmi_bmof",
+            "hp_omen", "hp_laptop", "platform_profile",
+        ]
+        try:
+            lsmod_out = _run_cmd(["lsmod"], timeout=2)
+            for mod in modules_to_check:
+                loaded = mod in lsmod_out.split() or any(
+                    line.split()[0] == mod for line in lsmod_out.splitlines() if line.strip()
+                )
+                out.append(f"  {mod:24s}: {'✓ Loaded' if loaded else '✗ Not Loaded'}")
+        except Exception:
+            out.append("  Could not check modules")
+        out.append("")
+
+        # ── 8. Service Status ────────────────────────────────────────
+        out.append("── OMENCTL SERVICES ──")
         for svc_name in ("hpm-fan", "hpm-rgb", "hpm-power", "hpm-mux", "hpm-platform"):
             try:
                 status = subprocess.check_output(
                     ["systemctl", "is-active", f"{svc_name}.service"],
                     stderr=subprocess.DEVNULL, timeout=2
                 ).decode(errors='ignore').strip()
-                out.append(f"  {svc_name}: {status}")
+                emoji = "✓" if status == "active" else "✗"
+                out.append(f"  {emoji} {svc_name:18s}: {status}")
             except subprocess.CalledProcessError as e:
-                out.append(f"  {svc_name}: {e.output.decode(errors='ignore').strip() if e.output else 'inactive'}")
+                status = e.output.decode(errors='ignore').strip() if e.output else "inactive"
+                out.append(f"  ✗ {svc_name:18s}: {status}")
             except Exception as e:
-                out.append(f"  {svc_name}: Error ({e})")
+                out.append(f"  ? {svc_name:18s}: Error ({e})")
 
-        # 8. Kernel Logs (dmesg)
-        out.append("\nKernel Logs:")
-        try:
-            import re as _re
-            _log_pattern = _re.compile(r'hp_wmi|wmi|hp-manager', _re.IGNORECASE)
-            try:
-                dmesg_out = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL, timeout=3).decode(errors='ignore')
-                log_lines = [l for l in dmesg_out.splitlines() if _log_pattern.search(l)][-10:]
-                logs = '\n'.join(log_lines)
-            except Exception:
-                logs = ''
-            if not logs.strip():
+        # Service config files
+        out.append("")
+        out.append("  Saved Configs (/etc/hp-manager/):")
+        config_dir = "/etc/hp-manager"
+        if os.path.exists(config_dir):
+            for cfg_file in sorted(glob.glob(os.path.join(config_dir, "*.json"))):
+                fname = os.path.basename(cfg_file)
                 try:
-                    journal_out = subprocess.check_output(
-                        ['journalctl', '-k', '--no-pager'],
-                        stderr=subprocess.DEVNULL, timeout=3
-                    ).decode(errors='ignore')
-                    log_lines = [l for l in journal_out.splitlines() if _log_pattern.search(l)][-10:]
-                    logs = '\n'.join(log_lines)
+                    import json as _json
+                    with open(cfg_file) as f:
+                        data = _json.load(f)
+                    # Show key-value pairs, truncating long values
+                    items = []
+                    for k, v in data.items():
+                        sv = str(v)
+                        if len(sv) > 40:
+                            sv = sv[:37] + "..."
+                        items.append(f"{k}={sv}")
+                    out.append(f"    {fname}: {', '.join(items)}")
                 except Exception:
-                    logs = ''
-            
-            if logs.strip():
-                out.append(logs.strip())
-            else:
-                out.append("No relevant logs found.")
-        except:
-            out.append("Could not access dmesg/journal (insufficient permissions).")
+                    out.append(f"    {fname}: (unreadable)")
+        else:
+            out.append(f"    {config_dir} does not exist")
+        out.append("")
 
+        # ── 9. Relevant Kernel Logs ──────────────────────────────────
+        out.append("── KERNEL LOGS (hp_wmi / ACPI / thermal) ──")
+        try:
+            log_pattern = re.compile(
+                r'hp.wmi|hp.omen|hp.rgb|wmi.*hp|thermal.*profile|omen|ACPI.*Error|AE_AML',
+                re.IGNORECASE
+            )
+            dmesg_text = ""
+            try:
+                dmesg_text = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL, timeout=5).decode(errors='ignore')
+            except Exception:
+                try:
+                    dmesg_text = subprocess.check_output(
+                        ['journalctl', '-k', '--no-pager', '-b'],
+                        stderr=subprocess.DEVNULL, timeout=5
+                    ).decode(errors='ignore')
+                except Exception:
+                    pass
+
+            if dmesg_text:
+                log_lines = [l for l in dmesg_text.splitlines() if log_pattern.search(l)]
+                # Deduplicate
+                seen = set()
+                unique_lines = []
+                for l in log_lines:
+                    normalized = re.sub(r'^\[[\s\d.]+\]\s*', '', l.strip())
+                    if normalized not in seen:
+                        seen.add(normalized)
+                        unique_lines.append(l.strip())
+                for line in unique_lines[-25:]:
+                    out.append(f"  {line}")
+                if not unique_lines:
+                    out.append("  No relevant kernel logs found.")
+            else:
+                out.append("  Could not access dmesg/journal.")
+        except Exception:
+            out.append("  Could not access dmesg/journal (insufficient permissions).")
+
+        out.append("")
+        out.append(f"{'='*60}")
+        out.append(f"  End of Diagnostic Report")
+        out.append(f"{'='*60}")
         return "\n".join(out)
+
+    def _create_github_issue(self, btn):
+        """Collect diagnostics and open a pre-filled GitHub issue in the browser."""
+        old_text = self.github_btn_label.get_label()
+        self.github_btn_label.set_label(f"⏳  {T('github_issue_generating')}")
+
+        def _worker():
+            try:
+                diag = self._gather_github_issue_body()
+                GLib.idle_add(self._open_github_issue, diag, old_text)
+            except Exception as e:
+                GLib.idle_add(self._github_issue_error, str(e), old_text)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _gather_github_issue_body(self):
+        """Build a Markdown-formatted GitHub issue body with diagnostics."""
+        import os, glob, platform, subprocess, re, json as _json
+        from urllib.parse import quote
+
+        def _read_dmi(name, default="N/A"):
+            for prefix in ("/sys/class/dmi/id/", "/sys/devices/virtual/dmi/id/"):
+                path = prefix + name
+                try:
+                    if os.path.exists(path):
+                        with open(path) as f:
+                            return f.read().strip()
+                except Exception:
+                    pass
+            return default
+
+        def _read_sysfs(path, default="N/A"):
+            try:
+                if os.path.exists(path):
+                    with open(path) as f:
+                        return f.read().strip()
+            except Exception:
+                pass
+            return default
+
+        board_id = _read_dmi("board_name", "Unknown")
+        product_name = _read_dmi("product_name", "Unknown")
+        bios_version = _read_dmi("bios_version", "Unknown")
+        bios_date = _read_dmi("bios_date", "Unknown")
+        kernel = platform.release()
+        distro = self._get_distro()
+
+        body_parts = []
+
+        # ── System Info Table ────────────────────────────────────────
+        body_parts.append("## System Information\n")
+        body_parts.append("| Property | Value |")
+        body_parts.append("|----------|-------|")
+        body_parts.append(f"| **Board ID** | `{board_id}` |")
+        body_parts.append(f"| **Model** | {product_name} |")
+        body_parts.append(f"| **BIOS** | {bios_version} ({bios_date}) |")
+        body_parts.append(f"| **Kernel** | `{kernel}` |")
+        body_parts.append(f"| **OS** | {distro} |")
+        body_parts.append(f"| **OmenCtl** | v{APP_VERSION} |")
+
+        # Secure Boot
+        secure_boot = "Unknown"
+        try:
+            for sb_path in glob.glob("/sys/firmware/efi/efivars/SecureBoot-*"):
+                with open(sb_path, "rb") as f:
+                    data = f.read()
+                    secure_boot = "Enabled" if data[-1] == 1 else "Disabled"
+                    break
+        except Exception:
+            pass
+        body_parts.append(f"| **Secure Boot** | {secure_boot} |")
+        body_parts.append("")
+
+        # ── Capabilities Match ───────────────────────────────────────
+        try:
+            import sys as _sys
+            _daemon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "daemon"))
+            if _daemon_path not in _sys.path:
+                _sys.path.insert(0, _daemon_path)
+            from common.capabilities import KNOWN_MODELS
+            caps = KNOWN_MODELS.get(board_id.upper(), None)
+            if caps:
+                body_parts.append(f"**Capabilities DB**: Matched `{caps.model_name}` — EC={caps.supports_fan_control_ec}, WMI={caps.supports_fan_control_wmi}, MUX={caps.has_mux_switch}\n")
+            else:
+                body_parts.append(f"**Capabilities DB**: Board `{board_id}` not in database\n")
+        except Exception:
+            pass
+
+        # ── ACPI Errors ──────────────────────────────────────────────
+        acpi_errors = []
+        try:
+            acpi_pattern = re.compile(
+                r'ACPI\s*(Error|Warning|Exception)|AE_AML_|WQBZ|WQBE|WMID|'
+                r'AE_NOT_FOUND|AE_BAD_PARAMETER|hp.wmi.*error|hp.wmi.*fail',
+                re.IGNORECASE
+            )
+            dmesg_out = ""
+            try:
+                dmesg_out = subprocess.check_output(['dmesg'], stderr=subprocess.DEVNULL, timeout=5).decode(errors='ignore')
+            except Exception:
+                try:
+                    dmesg_out = subprocess.check_output(
+                        ['journalctl', '-k', '--no-pager', '-b'],
+                        stderr=subprocess.DEVNULL, timeout=5
+                    ).decode(errors='ignore')
+                except Exception:
+                    pass
+
+            if dmesg_out:
+                seen = set()
+                for line in dmesg_out.splitlines():
+                    if acpi_pattern.search(line):
+                        normalized = re.sub(r'^\[[\s\d.]+\]\s*', '', line.strip())
+                        if normalized not in seen:
+                            seen.add(normalized)
+                            acpi_errors.append(normalized)
+        except Exception:
+            pass
+
+        if acpi_errors:
+            body_parts.append("## ACPI Errors\n")
+            body_parts.append("```")
+            for err in acpi_errors[:15]:
+                body_parts.append(err)
+            if len(acpi_errors) > 15:
+                body_parts.append(f"... ({len(acpi_errors) - 15} more)")
+            body_parts.append("```\n")
+
+        # ── Fan / Thermal Sysfs State ────────────────────────────────
+        body_parts.append("## Fan & Thermal Control\n")
+        sysfs_lines = []
+
+        # Hwmon scan
+        for hdir in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
+            try:
+                name_val = _read_sysfs(os.path.join(hdir, "name"), "")
+                if name_val in ("hp", "hp-omen"):
+                    sysfs_lines.append(f"Hwmon: {hdir} (driver: {name_val})")
+                    for fan_path in sorted(glob.glob(os.path.join(hdir, "fan*_input"))):
+                        fnum = os.path.basename(fan_path).replace("fan", "").replace("_input", "")
+                        rpm = _read_sysfs(fan_path, "?")
+                        sysfs_lines.append(f"  fan{fnum}_input = {rpm} RPM")
+                    for pwm_file in ("pwm1", "pwm1_enable", "pwm1_min", "pwm1_max"):
+                        pwm_path = os.path.join(hdir, pwm_file)
+                        if os.path.exists(pwm_path):
+                            val = _read_sysfs(pwm_path, "?")
+                            sysfs_lines.append(f"  {pwm_file} = {val}")
+                        else:
+                            sysfs_lines.append(f"  {pwm_file} = NOT PRESENT")
+                    break
+            except Exception:
+                continue
+
+        # Profile paths
+        for pp in ("/sys/firmware/acpi/platform_profile",
+                    "/sys/devices/platform/hp-wmi/thermal_profile",
+                    "/sys/devices/platform/hp-omen/thermal_profile"):
+            if os.path.exists(pp):
+                sysfs_lines.append(f"{pp} = {_read_sysfs(pp, '?')}")
+            else:
+                sysfs_lines.append(f"{pp} = NOT PRESENT")
+
+        if sysfs_lines:
+            body_parts.append("```")
+            for line in sysfs_lines:
+                body_parts.append(line)
+            body_parts.append("```\n")
+
+        # ── Modules & Services ───────────────────────────────────────
+        body_parts.append("## Drivers & Services\n")
+        mod_lines = []
+        try:
+            lsmod_out = subprocess.check_output(["lsmod"], stderr=subprocess.DEVNULL, timeout=2).decode(errors='ignore')
+            for mod in ("hp_wmi", "hp_rgb_lighting", "ec_sys"):
+                loaded = any(line.split()[0] == mod for line in lsmod_out.splitlines() if line.strip())
+                mod_lines.append(f"{mod}: {'Loaded' if loaded else 'Not Loaded'}")
+        except Exception:
+            mod_lines.append("Could not check modules")
+
+        svc_lines = []
+        for svc in ("hpm-fan", "hpm-rgb", "hpm-power", "hpm-mux", "hpm-platform"):
+            try:
+                status = subprocess.check_output(
+                    ["systemctl", "is-active", f"{svc}.service"],
+                    stderr=subprocess.DEVNULL, timeout=2
+                ).decode(errors='ignore').strip()
+            except subprocess.CalledProcessError as e:
+                status = e.output.decode(errors='ignore').strip() if e.output else "inactive"
+            except Exception:
+                status = "unknown"
+            svc_lines.append(f"{svc}: {status}")
+
+        body_parts.append("```")
+        for line in mod_lines + [""] + svc_lines:
+            body_parts.append(line)
+        body_parts.append("```\n")
+
+        # ── Issue Description placeholder ────────────────────────────
+        body_parts.append("## Issue Description\n")
+        body_parts.append("<!-- Describe your issue here -->\n")
+        body_parts.append("## Steps to Reproduce\n")
+        body_parts.append("1. \n2. \n3. \n")
+        body_parts.append("## Expected Behavior\n")
+        body_parts.append("<!-- What did you expect to happen? -->\n")
+        body_parts.append("## Actual Behavior\n")
+        body_parts.append("<!-- What actually happened? -->\n")
+
+        full_body = "\n".join(body_parts)
+
+        # Build the title
+        title = f"[{board_id}] Bug Report — {product_name}"
+
+        return {"title": title, "body": full_body}
+
+    def _open_github_issue(self, diag, old_label):
+        """URL-encode and open the pre-filled GitHub issue in the browser."""
+        from urllib.parse import quote
+
+        title = diag["title"]
+        body = diag["body"]
+
+        # GitHub URL limit is ~8000 chars. Truncate body if needed.
+        max_body_len = 6500
+        if len(body) > max_body_len:
+            body = body[:max_body_len] + "\n\n...(truncated — paste full diagnostics from 'Copy Debug Info')"
+
+        url = f"https://github.com/{GITHUB_REPO}/issues/new?title={quote(title)}&body={quote(body)}"
+
+        try:
+            subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.github_btn_label.set_label(f"✓  {T('github_issue_opened')}")
+        except Exception:
+            # Fallback: copy URL to clipboard
+            self.get_clipboard().set(url)
+            self.github_btn_label.set_label(f"📋  URL {T('copied_to_clipboard')}")
+
+        GLib.timeout_add(3000, lambda: self.github_btn_label.set_label(old_label) or False)
+        return False
+
+    def _github_issue_error(self, error_msg, old_label):
+        """Handle GitHub issue generation error."""
+        self.github_btn_label.set_label(f"✗  {T('error')}: {error_msg[:50]}")
+        GLib.timeout_add(3000, lambda: self.github_btn_label.set_label(old_label) or False)
+        return False
+

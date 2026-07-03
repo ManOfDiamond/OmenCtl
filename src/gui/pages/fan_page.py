@@ -1779,9 +1779,11 @@ class FanPage(Gtk.Box):
                 if not info.get("available", False):
                     return
                     
-                # Only set mode if it's not already custom
-                if info.get("mode", "") != "custom":
-                    self._set_daemon_fan_mode("custom")
+                # Ensure daemon is in the correct curve-based mode
+                expected_mode = self.fan_control_mode  # "performance" or "custom"
+                current_mode = info.get("mode", "")
+                if current_mode != expected_mode:
+                    self._set_daemon_fan_mode(expected_mode)
                     
                 fans = info.get("fans", {})
 

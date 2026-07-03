@@ -1,10 +1,10 @@
 # OmenCtl - Yenilikler ve Değişiklik Günlüğü (NEWS)
 
-Bu dosya, OmenCtl v1.6.0-preview sürümü ve yakın zamandaki tüm mimari geliştirmeleri, yeni özellikleri, hata düzeltmelerini ve güvenlik yapılandırmalarını listeler.
+Bu dosya, OmenCtl v1.6.1 sürümü ve yakın zamandaki tüm mimari geliştirmeleri, yeni özellikleri, hata düzeltmelerini ve güvenlik yapılandırmalarını listeler.
 
 ---
 
-## [v1.6.0-preview] - 2026-06-27
+## [v1.6.1] - 2026-07-04
 
 ### 🌟 Yeni Özellikler & Gelişmiş Güç Yönetimi
 * **Gelişmiş Güç Yönetimi (Power Tuning) Sayfası:** `PowerPage` bileşeni (`src/gui/pages/power_page.py`) eklendi. Kullanıcıların işlemci voltaj düşürme (Undervolt), TCC (Thermal Velocity Boost) sıcaklık ofseti belirleme ve özel güç limitleri (PL1/PL2) ayarlamalarına olanak tanındı.

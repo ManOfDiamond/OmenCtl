@@ -28,3 +28,4 @@ driver/.*.cmd
 driver/.*.d
 /tmp/
 issues/
+news.md

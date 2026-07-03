@@ -361,6 +361,15 @@ class RGBService:
         if self._rgb.is_available():
             self._rgb.write_win_lock(self._config.get("win_lock", False))
 
+        # Restore saved power state — BIOS resets keyboard backlight to ON
+        # on every boot, so we must explicitly re-apply the user's preference.
+        if self._rgb.is_available():
+            saved_power = self._config.get("power", True)
+            if not saved_power:
+                logger.info("Restoring keyboard backlight OFF (saved power=False)")
+                self._rgb.write_brightness(False)
+                self._rgb.write_all(["000000"] * 8)
+
         # Start animation engine
         self._engine = None
         if self._rgb.is_available():

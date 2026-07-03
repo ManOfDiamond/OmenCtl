@@ -56,7 +56,7 @@ from pages.keyboard_page import KeyboardPage
 from pages.app_profiles_page import AppProfilesPage
 from pages.power_page import PowerPage
 
-APP_VERSION = "1.6.0-preview"
+APP_VERSION = "1.6.1"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -2117,11 +2117,11 @@ class HPManagerWindow(Gtk.ApplicationWindow):
 
         # ── Navigation items (excluding Settings) ──
         nav_items = [
-            ("fan",       self.page_titles["fan"],       "weather-tornado-symbolic"),
-            ("lighting",  self.page_titles["lighting"],  "lightbulb-symbolic"),
-            ("power",     self.page_titles["power"],     "weather-clear-symbolic"),
-            ("keyboard",  self.page_titles["keyboard"],  "input-keyboard-symbolic"),
-            ("app_profiles", self.page_titles["app_profiles"], "preferences-system-symbolic"),
+            ("fan",       self.page_titles["fan"],       "system-run-symbolic"),
+            ("lighting",  self.page_titles["lighting"],  "keyboard-brightness-symbolic"),
+            ("power",     self.page_titles["power"],     "battery-symbolic"),
+            ("keyboard",  self.page_titles["keyboard"],  "preferences-desktop-keyboard-symbolic"),
+            ("app_profiles", self.page_titles["app_profiles"], "applications-system-symbolic"),
             ("mux",       "MUX",                        "video-display-symbolic"),
         ]
 

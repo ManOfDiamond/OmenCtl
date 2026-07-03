@@ -405,7 +405,7 @@ class FanService:
             return
         saved = self._config.get("fan_mode", "auto")
 
-        if saved in ("auto", "max", "custom"):
+        if saved in ("auto", "max", "custom", "performance"):
             if self._fan.get_mode() != saved:
                 ok = self._fan.set_mode(saved)
                 logger.info("Restored fan mode '%s' (success=%s)", saved, ok)
