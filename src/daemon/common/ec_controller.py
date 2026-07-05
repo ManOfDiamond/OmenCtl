@@ -119,6 +119,22 @@ class LinuxEcController:
         """Set performance mode directly via EC."""
         if self.is_unsafe_ec_model or not self.has_ec_access:
             return False
+            
+        # EC Fallback for 8E35 (broken WMI methods _SB.WMID.WQBZ)
+        if self.board_id == "8E35":
+            fallback_map = {
+                "performance": 0x31,
+                "max": 0x31,
+                "default": 0x30,
+                "auto": 0x30,
+                "balanced": 0x30,
+                "cool": 0x50,
+                "eco": 0x50,
+            }
+            val = fallback_map.get(mode.lower(), 0x30)
+            logger.info("Using EC Fallback for 8E35 to set thermal profile: 0x%02X at 0x59", val)
+            return self.write_byte(0x59, val)
+
         mode_map = {
             "default": 0x30,
             "auto": 0x30,

@@ -19,7 +19,7 @@ def T(k):
     return _T(k)
 
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.3"
 GITHUB_REPO = "yunusemreyl/OmenCtl"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -596,71 +596,21 @@ class SettingsPage(Gtk.Box):
 
         content.append(self._make_section_header("🩺", T("debug_info_title")))
 
-        # Show Terminal button cell
-        term_btn = Gtk.Button()
-        term_btn.add_css_class("settings-row")
-        term_btn.connect("clicked", self._show_debug_terminal)
+        dump_btn = Gtk.Button()
+        dump_btn.add_css_class("settings-row")
+        dump_btn.connect("clicked", lambda *_: self.main_stack.set_visible_child_name("dump"))
         
-        term_inner = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
+        dump_inner = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
         
-        self._debug_term_icon = None
-
-        term_lbl = Gtk.Label(label=f"📟  {T('show_debug_info')}", xalign=0, hexpand=True, valign=Gtk.Align.CENTER)
-        term_lbl.add_css_class("settings-row-label")
-        term_inner.append(term_lbl)
+        dump_lbl = Gtk.Label(label=f"📟  {T('troubleshooting_dump')}", xalign=0, hexpand=True, valign=Gtk.Align.CENTER)
+        dump_lbl.add_css_class("settings-row-label")
+        dump_inner.append(dump_lbl)
 
         chevron1 = Gtk.Image.new_from_icon_name("go-next-symbolic")
         chevron1.add_css_class("chevron-arrow")
-        term_inner.append(chevron1)
-        term_btn.set_child(term_inner)
-        debug_card.append(term_btn)
-
-        debug_card.append(self._make_sep())
-
-        # Copy Log button cell
-        copy_btn = Gtk.Button()
-        copy_btn.add_css_class("settings-row")
-        copy_btn.connect("clicked", self._copy_debug_log)
-        
-        copy_inner = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
-        
-        self._debug_copy_icon = None
-
-        self.copy_btn_label = Gtk.Label(label=f"📋  {T('copy_debug_log')}", xalign=0, hexpand=True, valign=Gtk.Align.CENTER)
-        self.copy_btn_label.add_css_class("settings-row-label")
-        copy_inner.append(self.copy_btn_label)
-
-        chevron2 = Gtk.Image.new_from_icon_name("go-next-symbolic")
-        chevron2.add_css_class("chevron-arrow")
-        copy_inner.append(chevron2)
-        copy_btn.set_child(copy_inner)
-        debug_card.append(copy_btn)
-
-        debug_card.append(self._make_sep())
-
-        # Create GitHub Issue button cell
-        github_btn = Gtk.Button()
-        github_btn.add_css_class("settings-row")
-        github_btn.connect("clicked", self._create_github_issue)
-
-        github_inner = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
-
-        self._debug_github_icon = None
-
-        github_text_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
-        self.github_btn_label = Gtk.Label(label=f"🐛  {T('create_github_issue')}", xalign=0, halign=Gtk.Align.START)
-        self.github_btn_label.add_css_class("settings-row-label")
-        github_text_col.append(self.github_btn_label)
-        github_sub = Gtk.Label(label=T("github_issue_desc"), xalign=0, halign=Gtk.Align.START)
-        github_sub.add_css_class("settings-row-sublabel")
-        github_text_col.append(github_sub)
-        github_inner.append(github_text_col)
-
-        chevron3 = Gtk.Image.new_from_icon_name("go-next-symbolic")
-        chevron3.add_css_class("chevron-arrow")
-        github_inner.append(chevron3)
-        github_btn.set_child(github_inner)
-        debug_card.append(github_btn)
+        dump_inner.append(chevron1)
+        dump_btn.set_child(dump_inner)
+        debug_card.append(dump_btn)
 
         content.append(debug_card)
 
@@ -735,9 +685,186 @@ class SettingsPage(Gtk.Box):
 
         # ── Assemble ──
         scroll.set_child(content)
-        self.append(scroll)
+        
+        self.main_stack = Gtk.Stack()
+        self.main_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.main_stack.set_transition_duration(250)
+        
+        self.main_stack.add_named(scroll, "main")
+        self.main_stack.add_named(self._build_dump_page(), "dump")
+        
+        self.append(self.main_stack)
+        
         GLib.idle_add(self._refresh_mux_backend)
         self.set_ui_scale("normal")
+
+    # ── Dump Page UI ──────────────────────────────────────────────────────────
+
+    def _build_dump_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        
+        # Header Box
+        header = Gtk.Box(spacing=12, orientation=Gtk.Orientation.HORIZONTAL)
+        header.set_margin_top(12)
+        header.set_margin_bottom(12)
+        header.set_margin_start(16)
+        header.set_margin_end(16)
+        
+        back_btn = Gtk.Button(label=f"⬅️ {T('back')}")
+        back_btn.add_css_class("suggested-action")
+        back_btn.connect("clicked", lambda *_: self.main_stack.set_visible_child_name("main"))
+        header.append(back_btn)
+        
+        title_lbl = Gtk.Label(label=T("thanks_for_using"), hexpand=True, halign=Gtk.Align.CENTER)
+        title_lbl.add_css_class("settings-row-label")
+        header.append(title_lbl)
+        
+        self.github_issue_btn = Gtk.Button(label=f"🚀 {T('send_to_github')}")
+        self.github_issue_btn.add_css_class("suggested-action")
+        self.github_issue_btn.connect("clicked", self._create_github_issue)
+        header.append(self.github_issue_btn)
+        
+        page.append(header)
+        page.append(self._make_sep())
+        
+        # Scrolled window for content
+        scroll = SmoothScrolledWindow(vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        
+        self.dump_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        self.dump_content.set_margin_top(16)
+        self.dump_content.set_margin_bottom(16)
+        self.dump_content.set_margin_start(24)
+        self.dump_content.set_margin_end(24)
+        scroll.set_child(self.dump_content)
+        page.append(scroll)
+        
+        self.main_stack.connect("notify::visible-child-name", self._on_stack_changed)
+        
+        return page
+
+    def _on_stack_changed(self, stack, param):
+        if stack.get_visible_child_name() == "dump":
+            self._load_dump_data()
+
+    def _load_dump_data(self):
+        # clear content
+        while child := self.dump_content.get_first_child():
+            self.dump_content.remove(child)
+            
+        spinner = Gtk.Spinner()
+        spinner.start()
+        spinner.set_halign(Gtk.Align.CENTER)
+        spinner.set_size_request(32, 32)
+        self.dump_content.append(spinner)
+        
+        def _worker():
+            try:
+                from pydbus import SystemBus
+                import json
+                bus = SystemBus()
+                svc = bus.get("com.yyl.hpmanager.platform")
+                j_str = svc.GetHardwareDumpJson()
+                GLib.idle_add(self._render_dump_data, j_str)
+            except Exception as e:
+                GLib.idle_add(self._render_dump_error, str(e))
+                
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _render_dump_error(self, error_str):
+        while child := self.dump_content.get_first_child():
+            self.dump_content.remove(child)
+        err_lbl = Gtk.Label(label=f"Failed to fetch data: {error_str}")
+        self.dump_content.append(err_lbl)
+
+    def _render_dump_data(self, json_str):
+        import json
+        while child := self.dump_content.get_first_child():
+            self.dump_content.remove(child)
+            
+        try:
+            data = json.loads(json_str)
+        except Exception as e:
+            self._render_dump_error(f"JSON Parse Error: {e}")
+            return
+        
+        # System Table
+        sys_data = data.get("system", {})
+        self.dump_content.append(self._make_section_header("💻", T("sys_info")))
+        
+        sys_grid = Gtk.Grid(row_spacing=8, column_spacing=16)
+        sys_grid.set_halign(Gtk.Align.CENTER)
+        row = 0
+        
+        lbl_p = Gtk.Label(label="Property", halign=Gtk.Align.START)
+        lbl_p.add_css_class("section-title")
+        sys_grid.attach(lbl_p, 0, row, 1, 1)
+        
+        lbl_v = Gtk.Label(label="Value", halign=Gtk.Align.START)
+        lbl_v.add_css_class("section-title")
+        sys_grid.attach(lbl_v, 1, row, 1, 1)
+        
+        row += 1
+        for k, v in sys_data.items():
+            sys_grid.attach(Gtk.Label(label=str(k), halign=Gtk.Align.START), 0, row, 1, 1)
+            sys_grid.attach(Gtk.Label(label=str(v), halign=Gtk.Align.START), 1, row, 1, 1)
+            row += 1
+        self.dump_content.append(sys_grid)
+        self.dump_content.append(self._make_sep())
+            
+        # ACPI Table
+        acpi = data.get("acpi", {})
+        methods = acpi.get("methods_found", {})
+        
+        self.dump_content.append(self._make_section_header("🔍", "ACPI / DSDT Mappings"))
+        grid = Gtk.Grid(row_spacing=8, column_spacing=16)
+        grid.set_halign(Gtk.Align.CENTER)
+        
+        row = 0
+        lbl1 = Gtk.Label(label="Offset / Metod", halign=Gtk.Align.START)
+        lbl1.add_css_class("section-title")
+        lbl2 = Gtk.Label(label="Değer / Karşılık", halign=Gtk.Align.START)
+        lbl2.add_css_class("section-title")
+        grid.attach(lbl1, 0, row, 1, 1)
+        grid.attach(lbl2, 1, row, 1, 1)
+        row += 1
+        
+        if not methods:
+            grid.attach(Gtk.Label(label="No methods found", halign=Gtk.Align.START), 0, row, 2, 1)
+        else:
+            for k, v in methods.items():
+                l1 = Gtk.Label(label=str(k), halign=Gtk.Align.START)
+                l2 = Gtk.Label(label=str(v), halign=Gtk.Align.START)
+                grid.attach(l1, 0, row, 1, 1)
+                grid.attach(l2, 1, row, 1, 1)
+                row += 1
+                
+        self.dump_content.append(grid)
+        self.dump_content.append(self._make_sep())
+        
+        # Errors in bash
+        errors = acpi.get("errors", [])
+        if errors:
+            self.dump_content.append(self._make_section_header("⚠️", "Hatalar / Çıktılar"))
+            
+            tv = Gtk.TextView()
+            tv.set_editable(False)
+            tv.set_monospace(True)
+            # Apply some terminal like styling
+            tv.get_style_context().add_class("card-diag")
+            tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            tv.set_margin_start(8)
+            tv.set_margin_end(8)
+            tv.set_margin_top(8)
+            tv.set_margin_bottom(8)
+            
+            buf = tv.get_buffer()
+            buf.set_text("\n".join(errors))
+            
+            scroll_err = Gtk.ScrolledWindow(vexpand=True)
+            scroll_err.set_child(tv)
+            scroll_err.set_size_request(-1, 200)
+            self.dump_content.append(scroll_err)
 
     # ── UI Scaling ────────────────────────────────────────────────────────────
 
@@ -1578,8 +1705,8 @@ class SettingsPage(Gtk.Box):
 
     def _create_github_issue(self, btn):
         """Collect diagnostics and open a pre-filled GitHub issue in the browser."""
-        old_text = self.github_btn_label.get_label()
-        self.github_btn_label.set_label(f"⏳  {T('github_issue_generating')}")
+        old_text = self.github_issue_btn.get_label()
+        self.github_issue_btn.set_label(f"⏳  {T('github_issue_generating')}")
 
         def _worker():
             try:
@@ -1772,6 +1899,19 @@ class SettingsPage(Gtk.Box):
             body_parts.append(line)
         body_parts.append("```\n")
 
+        # ── Hardware & DSDT Dump ─────────────────────────────────────
+        try:
+            from pydbus import SystemBus
+            bus = SystemBus()
+            plat_svc = bus.get("com.yyl.hpmanager.platform")
+            hw_dump = plat_svc.GenerateHardwareDump()
+            if hw_dump:
+                body_parts.append(hw_dump)
+                body_parts.append("\n")
+        except Exception as e:
+            body_parts.append("## Hardware Dump\n")
+            body_parts.append(f"Failed to get hardware dump from daemon: {e}\n")
+
         # ── Issue Description placeholder ────────────────────────────
         body_parts.append("## Issue Description\n")
         body_parts.append("<!-- Describe your issue here -->\n")
@@ -1805,18 +1945,18 @@ class SettingsPage(Gtk.Box):
 
         try:
             subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.github_btn_label.set_label(f"✓  {T('github_issue_opened')}")
+            self.github_issue_btn.set_label(f"✓  {T('github_issue_opened')}")
         except Exception:
             # Fallback: copy URL to clipboard
             self.get_clipboard().set(url)
-            self.github_btn_label.set_label(f"📋  URL {T('copied_to_clipboard')}")
+            self.github_issue_btn.set_label(f"📋  URL {T('copied_to_clipboard')}")
 
-        GLib.timeout_add(3000, lambda: self.github_btn_label.set_label(old_label) or False)
+        GLib.timeout_add(3000, lambda: self.github_issue_btn.set_label(old_label) or False)
         return False
 
     def _github_issue_error(self, error_msg, old_label):
         """Handle GitHub issue generation error."""
-        self.github_btn_label.set_label(f"✗  {T('error')}: {error_msg[:50]}")
-        GLib.timeout_add(3000, lambda: self.github_btn_label.set_label(old_label) or False)
+        self.github_issue_btn.set_label(f"✗  {T('error')}: {error_msg[:50]}")
+        GLib.timeout_add(3000, lambda: self.github_issue_btn.set_label(old_label) or False)
         return False
 

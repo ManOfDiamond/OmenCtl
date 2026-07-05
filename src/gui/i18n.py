@@ -160,6 +160,12 @@ TRANSLATIONS = {
         "apply_power": "Ayarları Uygula",
         "power_applied": "Güç ve voltaj ayarları başarıyla uygulandı.",
         "unsupported_power": "Cihazınız bu gelişmiş güç yönetim fonksiyonlarını desteklemiyor.",
+        
+        # Troubleshooting & Dump
+        "troubleshooting_dump": "Sorun Giderme ve Dump",
+        "thanks_for_using": "OmenCtl'i kullandığınız için teşekkür ederiz.",
+        "send_to_github": "Raporu Github Issue'ye Gönder",
+        "back": "Geri",
     },
     "en": {
         # Nav
@@ -294,6 +300,12 @@ TRANSLATIONS = {
         "apply_power": "Apply Settings",
         "power_applied": "Power and voltage settings applied successfully.",
         "unsupported_power": "Your system does not support these advanced power tuning features.",
+
+        # Troubleshooting & Dump
+        "troubleshooting_dump": "Troubleshooting & Dump",
+        "thanks_for_using": "Thank you for using OmenCtl.",
+        "send_to_github": "Send report to Github Issue",
+        "back": "Back",
     },
 }
 

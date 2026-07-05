@@ -130,19 +130,48 @@ def get_product_name():
                 pass
     return "HP Laptop"
 
+def get_cpu_model():
+    """Detect CPU model from /proc/cpuinfo."""
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+    except Exception:
+        pass
+    return "Unknown CPU"
+
 def detect_capabilities():
     """Discover capabilities based on current board ID and product name."""
     board_id = get_board_id()
+    cap = None
     if board_id in KNOWN_MODELS:
         logger.info("Matched board ID %s in capabilities database", board_id)
-        return KNOWN_MODELS[board_id]
+        cap = KNOWN_MODELS[board_id]
+    else:
+        # Try matching product name as fallback
+        prod = get_product_name().lower()
+        for known_cap in KNOWN_MODELS.values():
+            if known_cap.model_name.lower() in prod:
+                logger.info("Matched product name %s in capabilities database", known_cap.model_name)
+                cap = known_cap
+                break
 
-    # Try matching product name as fallback
-    prod = get_product_name().lower()
-    for cap in KNOWN_MODELS.values():
-        if cap.model_name.lower() in prod:
-            logger.info("Matched product name %s in capabilities database", cap.model_name)
-            return cap
+    if not cap:
+        logger.warning("Board ID %s not found in database, using default capabilities", board_id)
+        cap = DEFAULT_CAPS
+        
+    # Dynamic capability overrides based on hardware specifics
+    cpu_model = get_cpu_model().upper()
+    is_hx = "HX" in cpu_model
+    is_amd = "AMD" in cpu_model or "RYZEN" in cpu_model
 
-    logger.warning("Board ID %s not found in database, using default capabilities", board_id)
-    return DEFAULT_CAPS
+    # Disable power tuning on Victus models that do not have an HX processor (Intel only limitation)
+    if "VICTUS" in cap.family.upper():
+        if not is_hx and not is_amd:
+            logger.info("Detected non-HX Intel Victus processor (%s). Disabling Power Tuning features.", cpu_model)
+            cap.supports_undervolt = False
+            cap.supports_tcc_offset = False
+            cap.supports_power_limits = False
+
+    return cap

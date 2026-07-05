@@ -10,6 +10,7 @@ def print_usage():
     print("  fan auto            - Set fan to auto mode")
     print("  mode <profile>      - Set power profile (performance, balanced, quiet, eco)")
     print("  mux <mode>          - Set GPU mode (hybrid, discrete)")
+    print("  dump                - Generate an auto-calibration & hardware report")
     print("\nExamples:")
     print("  omen fan max")
     print("  omen mode performance")
@@ -75,6 +76,11 @@ def main():
             print(f"GPU mode set to {mode}: {res}")
             if "REBOOT_REQUIRED" in res:
                 print("Warning: A reboot or session restart is required for changes to take effect.")
+
+        elif cmd == "dump":
+            plat_svc = bus.get("com.yyl.hpmanager.platform")
+            res = plat_svc.GenerateHardwareDump()
+            print(res)
 
         else:
             print(f"Error: unknown command '{cmd}'")

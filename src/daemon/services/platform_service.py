@@ -13,6 +13,7 @@ from common.logging_config import setup_logging
 from common.config import ServiceConfig
 from common.dbus_helpers import run_service, system_sleeping
 from common.ec_controller import LinuxEcController
+import common.acpi_mapper as acpi_mapper
 
 logger = setup_logging("platform")
 
@@ -25,6 +26,8 @@ class PlatformService:
         <method name="GetState"><arg type="s" name="j" direction="out"/></method>
         <method name="SetKeyboardFixes"><arg type="b" name="prtsc" direction="in"/><arg type="b" name="f1" direction="in"/><arg type="s" name="result" direction="out"/></method>
         <method name="CleanMemory"><arg type="s" name="result" direction="out"/></method>
+        <method name="GenerateHardwareDump"><arg type="s" name="dump" direction="out"/></method>
+        <method name="GetHardwareDumpJson"><arg type="s" name="dump" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
@@ -237,6 +240,93 @@ class PlatformService:
     def GetSystemInfo(self):
         with self._cache_lock:
             return json.dumps(self._info_cache)
+
+    def GetHardwareDumpJson(self):
+        """Returns hardware dump data (ACPI, System, EC) as pure JSON."""
+        logger.info("Generating hardware dump (JSON)...")
+        data = {
+            "system": {},
+            "ec": {},
+            "acpi": {}
+        }
+        
+        # Basic Info
+        with self._cache_lock:
+            info = self._info_cache.copy()
+            data["system"] = {
+                "product_id": info.get('product_id', 'Unknown'),
+                "board_name": info.get('board_name', 'Unknown'),
+                "cpu_name": info.get('cpu_name', 'Unknown'),
+                "kernel": info.get('kernel', 'Unknown')
+            }
+
+        # EC Data
+        data["ec"]["supported"] = self.ec.has_ec_access
+        if self.ec.has_ec_access:
+            data["ec"]["capabilities"] = self.ec.capabilities.to_dict()
+
+        # ACPI Data
+        data["acpi"] = acpi_mapper.dump_and_analyze_acpi()
+
+        return json.dumps(data)
+
+    def GenerateHardwareDump(self):
+        logger.info("Generating hardware dump...")
+        lines = [
+            "# OmenCtl Auto-Calibration & Hardware Report",
+            "",
+            "Paste this into a new GitHub issue at https://github.com/yunusemreyl/OmenCtl/issues to add your board to the model database.",
+            ""
+        ]
+
+        # Basic Info
+        with self._cache_lock:
+            info = self._info_cache.copy()
+            lines.append("## System")
+            lines.append(f"- **Product ID:** {info.get('product_id', 'Unknown')}")
+            lines.append(f"- **Board Name:** {info.get('board_name', 'Unknown')}")
+            lines.append(f"- **CPU:** {info.get('cpu_name', 'Unknown')}")
+            lines.append(f"- **Kernel:** {info.get('kernel', 'Unknown')}")
+            lines.append("")
+
+        # EC Data
+        lines.append("## EC Access")
+        lines.append(f"- **Supported:** {self.ec.has_ec_access}")
+        if self.ec.has_ec_access:
+            lines.append("### Capabilities")
+            caps = self.ec.capabilities.to_dict()
+            for k, v in caps.items():
+                lines.append(f"  - **{k}**: {v}")
+        lines.append("")
+
+        # ACPI DSDT Data
+        lines.append("## ACPI & DSDT Analysis")
+        acpi_data = acpi_mapper.dump_and_analyze_acpi()
+        
+        if acpi_data.get("status") == "error":
+            lines.append("⚠️ **ACPI Analysis Failed:**")
+            for err in acpi_data.get("errors", []):
+                lines.append(f"- {err}")
+            lines.append("\n*Note: Install `acpica` or `acpica-tools` to enable DSDT decompilation.*")
+        else:
+            lines.append("### Discovered Methods")
+            methods = acpi_data.get("methods_found", {})
+            if not methods:
+                lines.append("- *No known OMEN ACPI methods found.*")
+            else:
+                for m, desc in methods.items():
+                    lines.append(f"- **{m}**: {desc}")
+            
+            lines.append("")
+            lines.append("### WMI GUIDs Found")
+            guids = acpi_data.get("wmi_guids", [])
+            if not guids:
+                lines.append("- *No UUIDs found.*")
+            else:
+                for g in sorted(guids):
+                    lines.append(f"- `{g}`")
+
+        return "\n".join(lines)
 
     def GetState(self):
         return json.dumps(self._config.snapshot())

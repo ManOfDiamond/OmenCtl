@@ -279,6 +279,37 @@ DKMSRGB
     # Refresh module dependency database so modprobe picks up the new .ko
     depmod -a
 
+    # ── Post-install verification ────────────────────────────────────────────
+    # Some distros (Nobara, certain Fedora spins) lack /usr/sbin/weak-modules,
+    # which causes DKMS to silently skip the final copy step.  We verify that
+    # the compiled .ko is actually reachable by modinfo; if not, force-reinstall
+    # targeting the running kernel explicitly.
+    info "Verifying DKMS module installation..."
+    _dkms_verify_ok=true
+
+    if ! modinfo hp-rgb-lighting &>/dev/null; then
+        warn "hp-rgb-lighting not found by modinfo after DKMS install — retrying with --force..."
+        dkms install -m "$MODNAME" -v "$MODVER" -k "$(uname -r)" --force 2>/dev/null || true
+        depmod -a
+        if ! modinfo hp-rgb-lighting &>/dev/null; then
+            _dkms_verify_ok=false
+            warn "hp-rgb-lighting STILL not found after forced reinstall."
+            warn "Try manually: sudo dkms install $MODNAME/$MODVER -k $(uname -r) --force"
+        fi
+    fi
+
+    if ! $STOCK_FAN_SUPPORT; then
+        if ! modinfo hp-wmi 2>/dev/null | grep -q "dkms\|updates\|extra"; then
+            warn "Custom hp-wmi not found in expected DKMS/updates path — retrying..."
+            dkms install -m "$MODNAME" -v "$MODVER" -k "$(uname -r)" --force 2>/dev/null || true
+            depmod -a
+        fi
+    fi
+
+    if $_dkms_verify_ok; then
+        ok "DKMS module verified: $(modinfo -n hp-rgb-lighting 2>/dev/null || echo 'path unknown')"
+    fi
+
     # After DKMS install succeeds, archive stock hp-wmi so the DKMS module wins consistently.
     if ! $STOCK_FAN_SUPPORT && [[ -n "$ORIG_WMI" ]] && [[ -f "$ORIG_WMI" ]]; then
         if [[ ! -f "${ORIG_WMI}.backup" ]]; then

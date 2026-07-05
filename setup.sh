@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.6.1"
+VERSION="1.6.3"
 
 # Colors
 RED='\033[0;31m'
@@ -240,13 +240,13 @@ install_dependencies() {
     # Base packages — power manager NOT included here
     case $PM in
         pacman)
-            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo python-pystray python-pillow
+            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo python-pystray python-pillow acpica
             ;;
         apt)
-            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray python3-pil
+            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray python3-pil acpica-tools
             ;;
         dnf|zypper)
-            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray python3-pillow
+            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray python3-pillow acpica-tools
             ;;
     esac
 

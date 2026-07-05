@@ -369,6 +369,16 @@ class RGBService:
                 logger.info("Restoring keyboard backlight OFF (saved power=False)")
                 self._rgb.write_brightness(False)
                 self._rgb.write_all(["000000"] * 8)
+                # Some BIOS/EC combos reset the backlight AFTER the driver
+                # initialises (observed on several HP boards).  A single
+                # write at init gets overridden.  Re-apply after a delay
+                # to catch the late BIOS reset.
+                def _delayed_backlight_off():
+                    if not self._config.get("power", True):
+                        logger.info("Delayed re-apply: keyboard backlight OFF")
+                        self._rgb.write_brightness(False)
+                        self._rgb.write_all(["000000"] * 8)
+                threading.Timer(3.0, _delayed_backlight_off).start()
 
         # Start animation engine
         self._engine = None

@@ -285,8 +285,23 @@ class PowerProfileController:
         self._sync_kernel_gpu_power(profile)
 
     def _sync_hardware_power(self, profile):
-        """Orchestrate platform profile sync and GPU power limits."""
+        """Orchestrate platform profile sync and GPU power limits.
+        
+        Order matters: the platform profile MUST be committed before
+        triggering GPU cTGP / PPAB, otherwise the BIOS may reject the
+        power-limit change (observed on 8D41 boards).
+        """
         self._sync_omen_profile(profile)
+        
+        # Fallback mechanism: Attempt direct EC write.
+        # For boards with broken WMI (like 8E35), this bypasses WMI entirely.
+        # For boards where WMI works but is insufficient, this serves as a helper.
+        self.ec.set_perf_mode(profile)
+
+        # Give BIOS/EC time to acknowledge the profile change before
+        # touching GPU power registers — without this delay the cTGP
+        # trigger is silently rejected on some boards (e.g. 8D41).
+        time.sleep(0.5)
         self._sync_runtime_power(profile)
 
     def _sync_kernel_gpu_power(self, profile):
@@ -299,21 +314,24 @@ class PowerProfileController:
         ppab_path = f"{base}/gpu_ppab"
 
         if not sysfs_exists(tgp_path):
+            logger.debug("gpu_tgp sysfs path not found at %s — skipping GPU power sync", tgp_path)
             return
 
         try:
             if profile == "performance":
-                sysfs_write(tgp_path, "1")
-                sysfs_write(ppab_path, "1")
-                logger.info("Kernel GPU Power: TGP=Enabled, PPAB=Enabled")
+                ok_tgp = sysfs_write(tgp_path, "1")
+                ok_ppab = sysfs_write(ppab_path, "1")
+                logger.info("Kernel GPU Power: TGP=Enabled(%s), PPAB=Enabled(%s)", ok_tgp, ok_ppab)
+                if not ok_tgp:
+                    logger.warning("sysfs_write to gpu_tgp FAILED — GPU may be capped at base TGP")
             elif profile == "balanced":
-                sysfs_write(tgp_path, "0")
-                sysfs_write(ppab_path, "1")
-                logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Enabled")
+                ok_tgp = sysfs_write(tgp_path, "0")
+                ok_ppab = sysfs_write(ppab_path, "1")
+                logger.info("Kernel GPU Power: TGP=Disabled(%s), PPAB=Enabled(%s)", ok_tgp, ok_ppab)
             else: # power-saver / quiet / eco
-                sysfs_write(tgp_path, "0")
-                sysfs_write(ppab_path, "0")
-                logger.info("Kernel GPU Power: TGP=Disabled, PPAB=Disabled")
+                ok_tgp = sysfs_write(tgp_path, "0")
+                ok_ppab = sysfs_write(ppab_path, "0")
+                logger.info("Kernel GPU Power: TGP=Disabled(%s), PPAB=Disabled(%s)", ok_tgp, ok_ppab)
         except Exception as e:
             logger.warning("Failed to sync Kernel GPU power: %s", e)
 
@@ -363,18 +381,40 @@ class PowerService:
         self._active_app = None
         self._pre_app_state = None  # (power_profile, fan_mode)
 
-        # Restore saved profile
+        # Restore saved profile after a short delay so that PPD / tuned /
+        # ACPI subsystems are fully initialised.  Without this delay the
+        # profile write can be silently rejected or overridden by PPD's own
+        # startup logic, causing "custom" to appear instead of the saved value.
         if self._ctrl.available:
-            saved = self._config.get("power_profile", "balanced")
-            if saved in self._ctrl.get_profiles():
-                if self._ctrl.get_active() != saved:
-                    ok = self._ctrl.set_profile(saved)
-                    logger.info("Restored power profile '%s' (success=%s)", saved, ok)
-                else:
-                    logger.info("Power profile already '%s', skipping", saved)
+            threading.Timer(3.0, self._delayed_profile_restore).start()
 
         # Background app monitor thread
         threading.Thread(target=self._app_monitor_loop, daemon=True).start()
+
+    def _delayed_profile_restore(self, _retry=0):
+        """Restore saved power profile with retry.
+        
+        Called 3 seconds after daemon start so PPD/tuned has time to
+        initialise.  Retries once after 5 more seconds on failure.
+        """
+        saved = self._config.get("power_profile", "balanced")
+        if saved not in self._ctrl.get_profiles():
+            logger.warning("Saved profile '%s' not in available profiles, skipping restore", saved)
+            return
+
+        current = self._ctrl.get_active()
+        if current == saved:
+            logger.info("Power profile already '%s' after boot, no restore needed", saved)
+            # Still sync hardware power (GPU TGP/PPAB) to ensure consistency
+            self._ctrl._sync_hardware_power(saved)
+            return
+
+        ok = self._ctrl.set_profile(saved)
+        logger.info("Delayed restore of power profile '%s' (success=%s, attempt=%d)", saved, ok, _retry + 1)
+
+        if not ok and _retry < 1:
+            logger.info("Profile restore failed, scheduling retry in 5 seconds...")
+            threading.Timer(5.0, self._delayed_profile_restore, kwargs={"_retry": _retry + 1}).start()
 
     def _app_monitor_loop(self):
         from pydbus import SystemBus
