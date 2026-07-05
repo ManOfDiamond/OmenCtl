@@ -14,6 +14,7 @@ from common.config import ServiceConfig
 from common.dbus_helpers import run_service, system_sleeping
 from common.ec_controller import LinuxEcController
 import common.acpi_mapper as acpi_mapper
+from common.capabilities import get_cpu_model
 
 logger = setup_logging("platform")
 
@@ -44,6 +45,7 @@ class PlatformService:
             "os_name": "Linux",
             "product_name": self.ec.product_name,
             "board_id": self.ec.board_id,
+            "cpu_name": get_cpu_model(),
             "capabilities": self.ec.capabilities.to_dict(),
             "ec_access": self.ec.has_ec_access,
             "is_unsafe_ec": self.ec.is_unsafe_ec_model,
@@ -254,8 +256,8 @@ class PlatformService:
         with self._cache_lock:
             info = self._info_cache.copy()
             data["system"] = {
-                "product_id": info.get('product_id', 'Unknown'),
-                "board_name": info.get('board_name', 'Unknown'),
+                "product_name": info.get('product_name', 'Unknown'),
+                "board_id": info.get('board_id', 'Unknown'),
                 "cpu_name": info.get('cpu_name', 'Unknown'),
                 "kernel": info.get('kernel', 'Unknown')
             }
@@ -283,8 +285,8 @@ class PlatformService:
         with self._cache_lock:
             info = self._info_cache.copy()
             lines.append("## System")
-            lines.append(f"- **Product ID:** {info.get('product_id', 'Unknown')}")
-            lines.append(f"- **Board Name:** {info.get('board_name', 'Unknown')}")
+            lines.append(f"- **Product Name:** {info.get('product_name', 'Unknown')}")
+            lines.append(f"- **Board ID:** {info.get('board_id', 'Unknown')}")
             lines.append(f"- **CPU:** {info.get('cpu_name', 'Unknown')}")
             lines.append(f"- **Kernel:** {info.get('kernel', 'Unknown')}")
             lines.append("")
