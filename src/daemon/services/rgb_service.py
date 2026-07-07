@@ -132,6 +132,16 @@ class RGBController:
         except Exception:
             pass
 
+    def read_brightness(self):
+        if not self.available:
+            return None
+        try:
+            with open(f"{self.driver_path}/brightness", "r") as f:
+                val = f.read().strip()
+                return val == "1"
+        except Exception:
+            return None
+
     def write_win_lock(self, locked):
         if not self.available:
             return
@@ -183,6 +193,18 @@ class AnimationEngine(threading.Thread):
             loop_start = time.time()
             snap = self.config.snapshot()
             pwr = bool(snap.get("power", True))
+            
+            # Hardware sync polling (every 2 seconds)
+            if loop_start - getattr(self, "_last_poll", 0.0) > 2.0:
+                self._last_poll = loop_start
+                hw_pwr = self.rgb.read_brightness()
+                if hw_pwr is not None and hw_pwr != pwr:
+                    logger.info("Hardware backlight state changed to %s, syncing config", hw_pwr)
+                    self.config.set("power", hw_pwr)
+                    self.config.save()
+                    pwr = hw_pwr
+                    snap["power"] = hw_pwr
+            
             mode = str(snap.get("mode", "static"))
             bri = float(snap.get("brightness", 100)) / 100.0
             spd = float(snap.get("speed", 50))
@@ -190,12 +212,13 @@ class AnimationEngine(threading.Thread):
             d = str(snap.get("direction", "ltr"))
 
             if not pwr:
-                self.rgb.write_brightness(False)
-                self.rgb.write_all(["000000"] * 8)
-                self._last_uniform = (-1, -1, -1)
-                self._last_wave = [(-1, -1, -1)] * 8
+                if self._last_uniform != (0, 0, 0):
+                    self.rgb.write_brightness(False)
+                    self.rgb.write_all(["000000"] * 8)
+                    self._last_uniform = (0, 0, 0)
+                    self._last_wave = [(-1, -1, -1)] * 8
                 self.config.changed.clear()
-                self.config.changed.wait()
+                self.config.changed.wait(timeout=2.0)
                 continue
 
             self.rgb.write_brightness(True)

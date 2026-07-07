@@ -60,7 +60,8 @@ class PowerProfileController:
     TUNED_BUS = "com.redhat.tuned"
     TUNED_PATH = "/Tuned"
 
-    def __init__(self):
+    def __init__(self, ec_controller=None):
+        self.ec = ec_controller
         self.mode = "ppd"
         self.available = False
         self.bus = SystemBus()
@@ -296,7 +297,8 @@ class PowerProfileController:
         # Fallback mechanism: Attempt direct EC write.
         # For boards with broken WMI (like 8E35), this bypasses WMI entirely.
         # For boards where WMI works but is insufficient, this serves as a helper.
-        self.ec.set_perf_mode(profile)
+        if self.ec:
+            self.ec.set_perf_mode(profile)
 
         # Give BIOS/EC time to acknowledge the profile change before
         # touching GPU power registers — without this delay the cTGP
@@ -357,7 +359,7 @@ class PowerService:
 
     def __init__(self):
         self.ec = LinuxEcController()
-        self._ctrl = PowerProfileController()
+        self._ctrl = PowerProfileController(ec_controller=self.ec)
         self._config = ServiceConfig(
             "power",
             {

@@ -89,6 +89,7 @@ KNOWN_MODELS = {
     "8D26": ModelCapabilities("8D26", "OMEN 16 (2024) AMD", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8E35": ModelCapabilities("8E35", "OMEN MAX 16t-ah000", model_year=2025, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8E41": ModelCapabilities("8E41", "OMEN MAX 16-ah0xxx", model_year=2025, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
+    "8C77": ModelCapabilities("8C77", "OMEN by HP Gaming Laptop 16-wf1xxx", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8C78": ModelCapabilities("8C78", "OMEN by HP Gaming Laptop 16-wf1xxx", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
 
     # OMEN 17 Series
@@ -96,6 +97,7 @@ KNOWN_MODELS = {
 
     # Victus Series
     "88EC": ModelCapabilities("88EC", "Victus by HP 16-e0xxx", model_year=2021, family="Victus", has_mux_switch=False, supports_fan_control_ec=True),
+    "8934": ModelCapabilities("8934", "Victus by HP 16-e0xxx", model_year=2021, family="Victus", has_mux_switch=False, supports_fan_control_ec=True),
     "8A25": ModelCapabilities("8A25", "Victus by HP 15-fb0xxx", model_year=2022, family="Victus", has_mux_switch=False, supports_fan_control_ec=True),
     "8A97": ModelCapabilities("8A97", "Victus by HP 16-d1xxx", model_year=2022, family="Victus", has_mux_switch=False, supports_fan_control_ec=True),
     "8B19": ModelCapabilities("8B19", "Victus by HP 16-r0xxx", model_year=2023, family="Victus", has_mux_switch=True, supports_fan_control_ec=False),

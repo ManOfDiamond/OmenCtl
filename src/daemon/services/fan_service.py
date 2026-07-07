@@ -412,74 +412,26 @@ class FanService:
             else:
                 logger.info("Fan mode already '%s', skipping write", saved)
 
-    # Known CPU/GPU hwmon driver names for targeted temperature reading
-    _CPU_GPU_DRIVERS = frozenset({
-        "coretemp", "k10temp", "zenpower", "cpu_thermal",  # CPU
-        "amdgpu", "nvidia", "nouveau", "radeon",            # GPU
-        "hp", "hp-omen",                                    # HP WMI (reports CPU/GPU)
-    })
-
     def _get_max_temp(self):
-        """Read the highest CPU/GPU temperature.
-
-        Prefer sensors from known CPU/GPU drivers to avoid phantom readings
-        from NVMe, VRM, ACPI, or other unrelated hwmon devices.
-        Falls back to all sensors only if no known driver is found.
+        """Read the highest CPU/GPU temperature using the standard hwmon controller.
+        
+        This avoids reacting to erratic single-core temperature spikes or buggy
+        phantom WMI sensors, ensuring consistency with the UI's temperature readings.
         """
-        cpu_gpu_max = 0.0
-        all_max = 0.0
-        found_known_driver = False
-
-        try:
-            for hwmon_dir in glob.glob("/sys/class/hwmon/hwmon*/"):
-                # Identify the driver name for this hwmon device
-                name_path = os.path.join(hwmon_dir, "name")
-                driver_name = ""
-                try:
-                    with open(name_path) as f:
-                        driver_name = f.read().strip().lower()
-                except Exception:
-                    pass
-
-                is_known = driver_name in self._CPU_GPU_DRIVERS
-                if is_known:
-                    found_known_driver = True
-
-                for temp_path in glob.glob(os.path.join(hwmon_dir, "temp*_input")):
-                    try:
-                        with open(temp_path) as f:
-                            t = int(f.read().strip()) / 1000.0
-                            if 0 < t < 120:
-                                if is_known and t > cpu_gpu_max:
-                                    cpu_gpu_max = t
-                                if t > all_max:
-                                    all_max = t
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        # Prefer CPU/GPU-specific reading; fall back to all sensors
-        if found_known_driver and cpu_gpu_max > 0:
-            return cpu_gpu_max
-
-        if all_max > 0:
-            return all_max
-
-        # Last resort: thermal zones
-        try:
-            for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
-                try:
-                    with open(path) as f:
-                        t = int(f.read().strip()) / 1000.0
-                        if 0 < t < 120 and t > all_max:
-                            all_max = t
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        return all_max or 45.0
+        if not hasattr(self, '_hwmon'):
+            from common.hwmon_controller import LinuxHwMonController
+            self._hwmon = LinuxHwMonController()
+            
+        cpu_temp = self._hwmon.get_cpu_temperature() or 0.0
+        gpu_temp = self._hwmon.get_gpu_temperature() or 0.0
+        
+        # Fallback to EC if both hwmon sensors fail and EC is available
+        if cpu_temp == 0.0 and gpu_temp == 0.0 and self._fan.ec.has_ec_access and not self._fan.ec.is_unsafe_ec_model:
+            cpu_temp = self._fan.ec.get_cpu_temp() or 0.0
+            gpu_temp = self._fan.ec.get_gpu_temp() or 0.0
+            
+        max_temp = max(cpu_temp, gpu_temp)
+        return max_temp if max_temp > 0 else 45.0
 
     def _curve_fan_pct(self, points, temp):
         if not points:

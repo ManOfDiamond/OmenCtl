@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.6.3
+## v1.6.4
 - **Gelişmiş Güç Yönetimi & Undervolt**: Donanım yeteneklerine dayalı koşullu UI ve PowerPage eklendi.
 - **Arka Plan & Otomatik Başlatma**: `--hidden` bayrağı, pystray tepsi simgesi ve `self.hold()` yaşam döngüsü entegre edildi.
 - **Kararlılık & Güvenlik**: D-Bus kota aşımı koruması ve Systemd izolasyonu sıkılaştırıldı.

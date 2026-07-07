@@ -1,4 +1,4 @@
-# OmenCtl v1.6.3
+# OmenCtl v1.6.4
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="160">
 </p>
@@ -48,7 +48,7 @@
 * A compatible Linux distribution (Ubuntu, Fedora, Arch, OpenSUSE, CachyOS, etc.)
 * `git` installed
 
-### Installation (v1.6.3)
+### Installation (v1.6.4)
 Open your terminal and run:
 ```bash
 # Clone the repository

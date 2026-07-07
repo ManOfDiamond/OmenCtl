@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.6.3"
+VERSION="1.6.4"
 
 # Colors
 RED='\033[0;31m'
