@@ -3566,10 +3566,10 @@ class HPManagerWindow(Gtk.ApplicationWindow):
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def do_close_request(self):
+        # Closing the window fully quits the app (and lets the on-demand
+        # D-Bus services idle-exit) instead of hiding to a background/tray
+        # process, so nothing keeps running once the window is closed.
         app = self.get_application()
-        if not getattr(self, "force_quit", False):
-            self.set_visible(False)
-            return True
 
         self._clear_scroll_tracking()
         if self._ui_scale_tick_id:
@@ -3616,22 +3616,16 @@ class HPManagerApp(Adw.Application if HAS_ADW else Gtk.Application):
             if hasattr(self, 'win'):
                 self.win.force_quit = True
                 self.win.close()
-            if self.tray_proc:
-                try: self.tray_proc.terminate()
-                except: pass
             self.quit()
             return 0
 
         if not hasattr(self, 'win'):
             print("Initializing window...", flush=True)
-            self.hold() # Ensure application remains running in background when hidden
             self.win = HPManagerWindow(application=app)
-            if shutil.which("omen-tray"):
-                try:
-                    self.tray_proc = subprocess.Popen(["omen-tray"])
-                except Exception as e:
-                    print(f"Failed to start tray process: {e}")
 
+        # The window is always presented; closing it quits the app entirely
+        # (no background/hidden process, no tray).  The "--hidden" flag is kept
+        # for backwards compatibility but no longer keeps the app resident.
         if not is_hidden:
             self.win.present()
 

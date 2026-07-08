@@ -651,11 +651,10 @@ do_install() {
     cp src/gui/pages/*.py     "$DATA_DIR/gui/pages/"
     cp src/gui/widgets/*.py   "$DATA_DIR/gui/widgets/"
 
-    # CLI and Tray files
+    # CLI files (tray removed — the app fully quits on close, so a persistent
+    # tray process would defeat the purpose)
     cp src/omen-cli.py "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/omen-cli.py"
-    cp src/omen-tray.py "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/omen-tray.py"
 
     # Images (non-fatal if missing)
     if [ -d "images" ] && [ -n "$(ls -A images 2>/dev/null)" ]; then
@@ -678,31 +677,20 @@ LAUNCHER
     chmod +x "$BIN_LINK"
     ln -sf "$BIN_LINK" "$OMENCTL_LINK"
 
-    # CLI and Tray link
+    # CLI link
     ln -sf "$INSTALL_DIR/omen-cli.py" "$CLI_LINK"
-    ln -sf "$INSTALL_DIR/omen-tray.py" "/usr/bin/omen-tray"
+    # Remove any stale tray launcher from previous installs
+    rm -f "/usr/bin/omen-tray" "$INSTALL_DIR/omen-tray.py"
 
     # System integration
     mkdir -p /etc/dbus-1/system.d
     mkdir -p /usr/share/polkit-1/actions
     mkdir -p /usr/share/applications
-    mkdir -p /etc/xdg/autostart
+    mkdir -p /usr/share/dbus-1/system-services
 
-    cat > /etc/xdg/autostart/omenctl-bg.desktop << 'AUTOSTART'
-[Desktop Entry]
-Name=OmenCtl Background
-Comment=OMEN Command Center Background Autostart
-Exec=sh -c "sleep 5 && omenctl --hidden"
-Icon=omenctl
-Terminal=false
-Type=Application
-Categories=System;Settings;
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-X-GNOME-Autostart-Delay=5
-X-KDE-autostart-after=panel
-AUTOSTART
-    chmod 644 /etc/xdg/autostart/omenctl-bg.desktop
+    # No login autostart: the app is launched on demand and fully quits on
+    # close.  Remove any autostart entry left by previous versions.
+    rm -f /etc/xdg/autostart/omenctl-bg.desktop
 
     # Ensure legacy monolithic service is stopped and removed
     systemctl stop com.yyl.hpmanager.service 2>/dev/null || true
@@ -720,6 +708,13 @@ AUTOSTART
             cp "data/hpm-${svc}.service" /etc/systemd/system/
             chmod 644 "/etc/systemd/system/hpm-${svc}.service"
             chown root:root "/etc/systemd/system/hpm-${svc}.service"
+        fi
+        # D-Bus system-bus activation file: lets an unprivileged GUI call start
+        # the (root) service on demand; the service idle-exits when unused.
+        if [ -f "data/dbus-system-services/com.yyl.hpmanager.${svc}.service" ]; then
+            cp "data/dbus-system-services/com.yyl.hpmanager.${svc}.service" /usr/share/dbus-1/system-services/
+            chmod 644 "/usr/share/dbus-1/system-services/com.yyl.hpmanager.${svc}.service"
+            chown root:root "/usr/share/dbus-1/system-services/com.yyl.hpmanager.${svc}.service"
         fi
     done
     cp data/com.yyl.hpmanager.desktop /usr/share/applications/
@@ -811,6 +806,7 @@ rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
 for svc in fan rgb power mux platform; do
     rm -f "/etc/systemd/system/hpm-${svc}.service"
     rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+    rm -f "/usr/share/dbus-1/system-services/com.yyl.hpmanager.${svc}.service"
 done
 rm -f /usr/share/applications/com.yyl.hpmanager.desktop
 rm -f /etc/xdg/autostart/omenctl-bg.desktop
@@ -828,19 +824,29 @@ UNINSTALLER
     chmod +x "$UNINSTALLER_LINK"
 
     systemctl daemon-reload
+    # On-demand model: services must NOT auto-start at boot.  Disable and stop
+    # any always-on units left by previous versions, then let D-Bus activate
+    # them when the GUI needs them.
     for svc in fan rgb power mux platform; do
-        systemctl enable "hpm-${svc}.service" || true
-        systemctl restart "hpm-${svc}.service" || warn "Daemon hpm-${svc} failed to start"
+        systemctl disable "hpm-${svc}.service" 2>/dev/null || true
+        systemctl stop "hpm-${svc}.service" 2>/dev/null || true
     done
 
-    # Post-installation delay and validation check
-    info "Waiting a brief moment for services to initialize..."
-    sleep 2.5
+    # Reload the D-Bus daemon so it picks up the new activation files.
+    systemctl reload dbus 2>/dev/null || true
+
+    # Quick activation smoke-test: ping each service so D-Bus starts it once,
+    # verifying activation works.  Each will idle-exit shortly after.
+    info "Verifying on-demand D-Bus activation..."
+    sleep 1
     for svc in fan rgb power mux platform; do
-        if systemctl is-active --quiet "hpm-${svc}.service"; then
-            log "Service hpm-${svc} is running successfully"
-        else
-            warn "Service hpm-${svc} failed to start! Check logs: journalctl -u hpm-${svc}.service"
+        if command -v dbus-send &>/dev/null; then
+            if dbus-send --system --print-reply --dest="com.yyl.hpmanager.${svc}" \
+                /com/yyl/hpmanager/${svc} com.yyl.hpmanager.${svc}.Ping &>/dev/null; then
+                log "Service hpm-${svc} activates on demand"
+            else
+                warn "Service hpm-${svc} did not activate — check: journalctl -u hpm-${svc}.service"
+            fi
         fi
     done
 
@@ -890,10 +896,14 @@ do_uninstall() {
     rm -rf "/var/lib/hp-manager"
     rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
     for svc in fan rgb power mux platform; do
+        systemctl disable "hpm-${svc}.service" 2>/dev/null || true
         rm -f "/etc/systemd/system/hpm-${svc}.service"
         rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+        rm -f "/usr/share/dbus-1/system-services/com.yyl.hpmanager.${svc}.service"
     done
+    rm -f /usr/bin/omen-tray
     rm -f /usr/share/applications/com.yyl.hpmanager.desktop
+    rm -f /etc/xdg/autostart/omenctl-bg.desktop
     rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
     rm -f /etc/modules-load.d/hp-rgb-lighting.conf
     rm -f /etc/modules-load.d/hp-wmi.conf
@@ -995,9 +1005,13 @@ do_update() {
     rm -rf "/var/lib/hp-manager"
     rm -f /etc/dbus-1/system.d/com.yyl.hpmanager.conf
     for svc in fan rgb power mux platform; do
+        systemctl disable "hpm-${svc}.service" 2>/dev/null || true
         rm -f "/etc/systemd/system/hpm-${svc}.service"
         rm -f "/etc/dbus-1/system.d/com.yyl.hpmanager.${svc}.conf"
+        rm -f "/usr/share/dbus-1/system-services/com.yyl.hpmanager.${svc}.service"
     done
+    rm -f /usr/bin/omen-tray
+    rm -f /etc/xdg/autostart/omenctl-bg.desktop
     rm -f /usr/share/applications/com.yyl.hpmanager.desktop
     rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
     rm -f /etc/modules-load.d/hp-rgb-lighting.conf
