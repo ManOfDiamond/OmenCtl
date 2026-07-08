@@ -16,7 +16,7 @@
 <img src="screenshots/performance.png" alt="Performance" width="100%">
 <p><em>Toggle hardware power profiles (<code>power-saver</code>, <code>balanced</code>, <code>performance</code>). Manage thermal profiles, view real-time hardware telemetry, and create custom fan curve splines with a 15-sample moving average deadband for silent operation.</em></p>
 
-### Power Tuning
+### Power Tuning [Now in Alpha]
 <img src="screenshots/power.png" alt="Power Tuning" width="100%">
 <p><em>Fine-tune your hardware limits directly. Apply custom CPU Undervolt offsets, configure TCC (Thermal Velocity Boost) targets, and set precise PL1/PL2 wattage limits. (Note: This page is automatically hidden on devices that do not support hardware power tuning, such as non-HX Victus models).</em></p>
 
@@ -28,7 +28,7 @@
 <img src="screenshots/keyboard.png" alt="Keyboard RGB" width="100%">
 <p><em>Customize 4-Zone keyboard backlighting with static colors, breathing, wave, and cycle animation effects driven by a zero-overhead animation engine.</em></p>
 
-### MUX Switch & Graphics
+### MUX Switch & Graphics [WMI control now in Alpha]
 <img src="screenshots/mux.png" alt="MUX Switch" width="100%">
 <p><em>Seamlessly toggle your graphics mode between Hybrid (Optimus), Discrete, and Integrated using supported backends like envycontrol, supergfxctl, or prime-select.</em></p>
 
