@@ -38,6 +38,13 @@ if [ "$KVER_MAJOR" -gt 7 ] || { [ "$KVER_MAJOR" -eq 7 ] && [ "$KVER_MINOR" -ge 0
     STOCK_FAN_SUPPORT=true
     # Verify stock hp-wmi actually exists in the kernel tree (e.g. some Zen/Arch kernels omit it)
     if ! modinfo hp-wmi &>/dev/null; then
+        # Check if the kernel tree is simply missing due to a pending reboot (common on Arch/CachyOS)
+        if [ ! -e "/lib/modules/$(uname -r)/modules.dep" ] && [ ! -e "/usr/lib/modules/$(uname -r)/modules.dep" ]; then
+            echo -e "${RED}[ERROR] Kernel modules for $(uname -r) are missing or broken.${NC}"
+            echo -e "${RED}[ERROR] This usually means you updated your kernel but haven't rebooted.${NC}"
+            echo -e "${RED}[ERROR] Please reboot your system and run the installer again.${NC}"
+            exit 1
+        fi
         echo -e "${YELLOW}[WARN] Kernel >= 7.0 detected but stock hp-wmi module is missing. Forcing custom hp-wmi build.${NC}"
         STOCK_FAN_SUPPORT=false
         FORCE_CUSTOM_HPWMI=true
@@ -200,7 +207,10 @@ do_install() {
     install_deps
 
     if $FORCE_CUSTOM_HPWMI; then
-        warn "Board ${BOARD_NAME:-unknown} detected — forcing custom hp-wmi install path on kernel $(uname -r)."
+        case "$BOARD_NAME" in
+            8D41|8D42|8BCD) warn "Board ${BOARD_NAME:-unknown} detected — forcing custom hp-wmi install path on kernel $(uname -r)." ;;
+            *) warn "Forcing custom hp-wmi install path on kernel $(uname -r)." ;;
+        esac
     fi
 
     # Detect Clang-built kernel and set LLVM=1 automatically
@@ -254,7 +264,11 @@ DEST_MODULE_LOCATION[0]="/kernel/drivers/platform/x86/hp"
 AUTOINSTALL="yes"
 DKMSRGB
     else
-        info "Kernel $(uname -r) detected (< 7.0) — installing both hp-wmi and hp-rgb-lighting..."
+        if [ "$KVER_MAJOR" -gt 7 ] || { [ "$KVER_MAJOR" -eq 7 ] && [ "$KVER_MINOR" -ge 0 ]; }; then
+            info "Kernel $(uname -r) detected (>= 7.0) but custom hp-wmi is forced — installing both hp-wmi and hp-rgb-lighting..."
+        else
+            info "Kernel $(uname -r) detected (< 7.0) — installing both hp-wmi and hp-rgb-lighting..."
+        fi
 
         info "Checking for stock hp-wmi driver path..."
         # FIX: modinfo -n resolves symlinks and works on both /lib and /usr/lib
