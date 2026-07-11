@@ -81,6 +81,7 @@ KNOWN_MODELS = {
     "878A": ModelCapabilities("878A", "OMEN 15 (2020) AMD", model_year=2020, family="OMEN", has_mux_switch=False, supports_fan_control_ec=True),
     
     # OMEN 16 Series
+    "8A43": ModelCapabilities("8A43", "OMEN by HP Gaming Laptop 16-n0xxx", model_year=2022, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8BAB": ModelCapabilities("8BAB", "OMEN by HP Gaming Laptop 16-wf0xxx", model_year=2023, family="OMEN", has_mux_switch=True, supports_gpu_power_boost=True, supports_fan_control_ec=False, notes="Uses hp-wmi / hwmon routes; direct legacy EC writes are unsafe"),
     "8BAD": ModelCapabilities("8BAD", "OMEN 16 (2023) Intel", model_year=2023, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8CD1": ModelCapabilities("8CD1", "OMEN 16 (2023) AMD", model_year=2023, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),

@@ -31,7 +31,7 @@ def _setup_sleep_handler(service_name: str):
     try:
         bus = SystemBus()
         logind = bus.get(
-            "org.freedesktop.login1", "/org/freedesktop/login1/Manager"
+            "org.freedesktop.login1", "/org/freedesktop/login1"
         )
 
         def _on_prepare_for_sleep(sleeping: bool):

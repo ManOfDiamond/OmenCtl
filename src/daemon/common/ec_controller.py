@@ -40,7 +40,10 @@ class LinuxEcController:
         self.is_unsafe_ec_model = not self.capabilities.supports_fan_control_ec
         self.has_ec_access = False
         
-        if not self.is_unsafe_ec_model:
+        # We need EC access for fan control OR for thermal fallback on specific boards
+        self.needs_ec_fallback = self.board_id in ("8E35", "8A43")
+        
+        if not self.is_unsafe_ec_model or self.needs_ec_fallback:
             self._ensure_ec_sys()
             self.has_ec_access = os.path.exists(EC_PATH)
         else:
@@ -57,7 +60,10 @@ class LinuxEcController:
 
     def read_byte(self, reg: int) -> int:
         """Read a single byte from the EC register."""
-        if not self.has_ec_access or self.is_unsafe_ec_model:
+        if not self.has_ec_access:
+            return 0
+        # If unsafe, only allow safe thermal registers for fallback
+        if self.is_unsafe_ec_model and reg not in (0x59, REG_PERF_MODE):
             return 0
         with self._lock:
             try:
@@ -75,7 +81,10 @@ class LinuxEcController:
 
     def write_byte(self, reg: int, val: int) -> bool:
         """Write a single byte to the EC register."""
-        if not self.has_ec_access or self.is_unsafe_ec_model:
+        if not self.has_ec_access:
+            return False
+        # If unsafe, only allow safe thermal registers for fallback
+        if self.is_unsafe_ec_model and reg not in (0x59, REG_PERF_MODE):
             return False
         with self._lock:
             try:
@@ -117,11 +126,11 @@ class LinuxEcController:
 
     def set_perf_mode(self, mode: str) -> bool:
         """Set performance mode directly via EC."""
-        if self.is_unsafe_ec_model or not self.has_ec_access:
+        if not self.has_ec_access:
             return False
             
-        # EC Fallback for 8E35 (broken WMI methods _SB.WMID.WQBZ)
-        if self.board_id == "8E35":
+        # EC Fallback for 8E35 and 8A43 (broken WMI methods _SB.WMID.WQBZ)
+        if self.board_id in ("8E35", "8A43"):
             fallback_map = {
                 "performance": 0x31,
                 "max": 0x31,
@@ -132,8 +141,11 @@ class LinuxEcController:
                 "eco": 0x50,
             }
             val = fallback_map.get(mode.lower(), 0x30)
-            logger.info("Using EC Fallback for 8E35 to set thermal profile: 0x%02X at 0x59", val)
+            logger.info("Using EC Fallback for %s to set thermal profile: 0x%02X at 0x59", self.board_id, val)
             return self.write_byte(0x59, val)
+
+        if self.is_unsafe_ec_model:
+            return False
 
         mode_map = {
             "default": 0x30,
