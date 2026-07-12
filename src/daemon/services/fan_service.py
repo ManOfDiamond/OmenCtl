@@ -244,10 +244,11 @@ class FanController:
                 if sysfs_write(os.path.join(self.hwmon_path, "pwm1"), 0):
                     ok = True
 
-        if not ok and self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
-            logger.info("Using direct EC write for mode %s fallback", mode)
-            if self.ec.set_perf_mode(mode):
-                ok = True
+        if not ok and self.ec.has_ec_access:
+            if not self.ec.is_unsafe_ec_model or self.ec.needs_ec_fallback:
+                logger.info("Using direct EC write for mode %s fallback", mode)
+                if self.ec.set_perf_mode(mode):
+                    ok = True
 
         if ok:
             self.mode = mode
