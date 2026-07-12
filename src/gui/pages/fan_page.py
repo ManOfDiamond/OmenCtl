@@ -2026,7 +2026,7 @@ class FanPage(Gtk.Box):
         # TLP / Auto-cpufreq conflicts
         conflict = data.get("power_conflict")
         if conflict:
-            self.selector_capsule.set_sensitive(conflict != "tlp")
+            self.selector_capsule.set_sensitive(True)
             self._pp_conflict_lbl.set_label(
                 f"<span color='#ef5b4a'>{T('power_managed_by').format(tool=conflict.upper())}</span>")
             self._pp_conflict_lbl.set_visible(True)

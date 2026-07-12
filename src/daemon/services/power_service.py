@@ -68,27 +68,42 @@ class PowerProfileController:
         self.proxy = None
 
         try:
-            self.proxy = self.bus.get(self.TUNED_BUS, self.TUNED_PATH)
-            self.proxy.active_profile()
-            self.mode = "tuned"
-            self.available = True
-            logger.info("PowerProfileController: Using Tuned backend")
+            has_external_manager = False
+            for tool in ("tlp", "auto-cpufreq"):
+                res = subprocess.run(["systemctl", "is-active", f"{tool}.service"], capture_output=True, text=True, timeout=1.0)
+                if res.stdout.strip() == "active":
+                    has_external_manager = True
+                    logger.info("PowerProfileController: Detected external manager '%s'", tool)
+                    break
         except Exception:
+            has_external_manager = False
+
+        if not has_external_manager:
             try:
-                self.proxy = self.bus.get(self.PPD_BUS, self.PPD_PATH)
-                self.mode = "ppd"
+                self.proxy = self.bus.get(self.TUNED_BUS, self.TUNED_PATH)
+                self.proxy.active_profile()
+                self.mode = "tuned"
                 self.available = True
-                logger.info("PowerProfileController: Using Power-Profiles-Daemon backend")
+                logger.info("PowerProfileController: Using Tuned backend")
             except Exception:
-                if sysfs_exists("/sys/devices/platform/hp-wmi/thermal_profile") or \
-                   sysfs_exists("/sys/devices/platform/hp-omen/thermal_profile"):
-                    self.mode = "omen_direct"
+                try:
+                    self.proxy = self.bus.get(self.PPD_BUS, self.PPD_PATH)
+                    self.mode = "ppd"
                     self.available = True
-                    logger.info("PowerProfileController: Using OMEN Direct sysfs backend")
-                else:
-                    self.proxy = None
-                    self.available = False
-                    logger.warning("PowerProfileController: No power profile backend found")
+                    logger.info("PowerProfileController: Using Power-Profiles-Daemon backend")
+                except Exception:
+                    pass
+
+        if not self.available:
+            if sysfs_exists("/sys/devices/platform/hp-wmi/thermal_profile") or \
+               sysfs_exists("/sys/devices/platform/hp-omen/thermal_profile"):
+                self.mode = "omen_direct"
+                self.available = True
+                logger.info("PowerProfileController: Using OMEN Direct sysfs backend")
+            else:
+                self.proxy = None
+                self.available = False
+                logger.warning("PowerProfileController: No power profile backend found")
 
     def get_profiles(self):
         if not self.available:
