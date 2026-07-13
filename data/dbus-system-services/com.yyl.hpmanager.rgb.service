@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.yyl.hpmanager.rgb
+Exec=/usr/bin/python3 /usr/libexec/hp-manager/services/rgb_service.py
+User=root
+SystemdService=hpm-rgb.service

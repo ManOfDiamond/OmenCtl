@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.yyl.hpmanager.platform
+Exec=/usr/bin/python3 /usr/libexec/hp-manager/services/platform_service.py
+User=root
+SystemdService=hpm-platform.service

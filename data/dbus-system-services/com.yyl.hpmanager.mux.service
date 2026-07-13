@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.yyl.hpmanager.mux
+Exec=/usr/bin/python3 /usr/libexec/hp-manager/services/mux_service.py
+User=root
+SystemdService=hpm-mux.service

@@ -443,17 +443,15 @@ class SettingsPage(Gtk.Box):
         appear_card.append(self._make_settings_row(
             "🌡️", T("temp_unit"), self.temp_dd, bg_class="icon-bg-temp"))
 
-        appear_card.append(self._make_sep())
-
-        # Autostart row
-        self.autostart_switch = Gtk.Switch()
-        self.autostart_switch.set_valign(Gtk.Align.CENTER)
-        self.autostart_switch.connect("state-set", self._on_autostart_toggle)
-        desktop_file = os.path.expanduser("~/.config/autostart/omenctl-bg.desktop")
-        self.autostart_switch.set_active(os.path.exists(desktop_file))
-        autostart_lbl = T("autostart") if "autostart" in globals() else "Autostart on login"
-        appear_card.append(self._make_settings_row(
-            "🚀", autostart_lbl, self.autostart_switch, bg_class="icon-bg-sys"))
+        # Autostart-on-login was removed: OmenCtl now fully quits on close and
+        # runs its services on demand, so there is no background process to
+        # start at login.  Clean up any autostart entry a previous version left.
+        try:
+            _stale_autostart = os.path.expanduser("~/.config/autostart/omenctl-bg.desktop")
+            if os.path.exists(_stale_autostart):
+                os.remove(_stale_autostart)
+        except Exception:
+            pass
 
         content.append(appear_card)
 
@@ -969,26 +967,6 @@ class SettingsPage(Gtk.Box):
         except Exception as e:
             self._updating_mux_dd = False
             self.mux_status.set_label(f"{T('error')}: {e}")
-        return False
-
-    def _on_autostart_toggle(self, switch, state):
-        desktop_dir = os.path.expanduser("~/.config/autostart")
-        desktop_file = os.path.join(desktop_dir, "omenctl-bg.desktop")
-        if state:
-            try:
-                os.makedirs(desktop_dir, exist_ok=True)
-                with open(desktop_file, "w") as f:
-                    f.write("[Desktop Entry]\nType=Application\nName=OmenCtl Background\nExec=omenctl --hidden\nIcon=omenctl\nTerminal=false\nNoDisplay=true\n")
-            except Exception as e:
-                print(f"Failed to enable autostart: {e}")
-                return True
-        else:
-            if os.path.exists(desktop_file):
-                try:
-                    os.remove(desktop_file)
-                except Exception as e:
-                    print(f"Failed to disable autostart: {e}")
-                    return True
         return False
 
     def _on_mux_backend(self, dd, _):
