@@ -1,5 +1,0 @@
-[D-BUS Service]
-Name=com.yyl.hpmanager.fan
-Exec=/usr/bin/python3 /usr/libexec/hp-manager/services/fan_service.py
-User=root
-SystemdService=hpm-fan.service
