@@ -1,5 +1,0 @@
-[D-BUS Service]
-Name=com.yyl.hpmanager.power
-Exec=/usr/bin/python3 /usr/libexec/hp-manager/services/power_service.py
-User=root
-SystemdService=hpm-power.service

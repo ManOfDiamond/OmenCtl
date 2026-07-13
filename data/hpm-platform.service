@@ -4,8 +4,8 @@ After=dbus.service systemd-logind.service
 Requires=dbus.service systemd-logind.service
 
 [Service]
-Type=dbus
-BusName=com.yyl.hpmanager.platform
+Type=simple
+ExecStartPre=/bin/sleep 2
 ExecStart=/usr/bin/python3 /usr/libexec/hp-manager/services/platform_service.py
 Restart=on-failure
 RestartSec=3
@@ -29,6 +29,5 @@ MemoryDenyWriteExecute=true
 SystemCallFilter=@system-service
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN CAP_SYS_RAWIO CAP_NET_ADMIN
 
-# D-Bus activated on demand — no [Install]/WantedBy so it does NOT start at
-# boot.  It is launched when the GUI first talks to it and exits itself after
-# an idle period (see HPM_IDLE_TIMEOUT in dbus_helpers.py).
+[Install]
+WantedBy=multi-user.target
