@@ -14,17 +14,9 @@ def _detect_system_lang():
         val = _os.environ.get(var, "")
         if val:
             code = val.split(".")[0].split("_")[0].lower()
-            if code.startswith("tr"):
-                return "tr"
-            if code.startswith("en"):
-                return "en"
-            # If it's a known code but not tr/en, default to English
-            if code:
-                return "en"
+            if code in TRANSLATIONS:
+                return code
     return "en"
-
-
-active_lang = _detect_system_lang()
 
 TRANSLATIONS = {
     "tr": {
@@ -59,8 +51,14 @@ TRANSLATIONS = {
         "f1_fix": "F1 (Sunum) Tuşunu Düzelt",
         "f1_desc": "F1 tuşunun Super+P (Sunum modu) yerine standart F1 olarak çalışmasını sağlar.",
         "apply_shortcuts": "Değişiklikleri Uygula",
-        "shortcuts_desc": "Laptopunuzdaki bazı tuşların davranışlarını buradan kalıcı olarak değiştirebilirsiniz.",
-        "hwdb_applied": "Klavye düzeltmeleri başarıyla uygulandı.",
+        "shortcuts_desc": "Cihazınızdaki bazı tuşların davranışını buradan kalıcı olarak değiştirebilirsiniz.",
+        "hwdb_applied": "Klavye düzeltmeleri hwdb üzerinden başarıyla uygulandı.",
+        "macros_title": "Makrolar ve Komutlar",
+        "macros_desc": "Özel tuşlara terminal komutları atayın veya ikon üzerinden uygulama seçin.",
+        "term_cmd": "Terminal komutu...",
+        "choose_app": "Yüklü uygulamalardan seç",
+        "sel_app": "Uygulama Seç",
+        "or_custom_cmd": "Veya özel bash komutu yazın...",
         # MUX page
         "mux_switch": "MUX Anahtarlayıcı", "gpu_info": "GPU BİLGİSİ",
         "gpu_card": "Ekran Kartı", "driver_ver": "Sürücü Sürümü",
@@ -201,6 +199,12 @@ TRANSLATIONS = {
         "apply_shortcuts": "Apply Changes",
         "shortcuts_desc": "You can permanently change the behavior of certain keys on your laptop here.",
         "hwdb_applied": "Keyboard fixes have been applied successfully.",
+        "macros_title": "Macros & Commands",
+        "macros_desc": "Assign terminal commands or click the icon to choose an application.",
+        "term_cmd": "Terminal command...",
+        "choose_app": "Choose installed application",
+        "sel_app": "Select Application",
+        "or_custom_cmd": "Or type custom bash command...",
         # MUX page
         "mux_switch": "MUX Switch", "gpu_info": "GPU INFO",
         "gpu_card": "Graphics Card", "driver_ver": "Driver Version",
@@ -309,6 +313,11 @@ TRANSLATIONS = {
     },
 }
 
+try:
+    from extra_langs import EXTRA_TRANSLATIONS
+    TRANSLATIONS.update(EXTRA_TRANSLATIONS)
+except ImportError:
+    pass
 
 def T(key):
     """Get translation for key using current active_lang."""
@@ -334,3 +343,5 @@ def set_lang(lang):
 def get_lang():
     """Get the current active language."""
     return active_lang
+
+active_lang = _detect_system_lang()

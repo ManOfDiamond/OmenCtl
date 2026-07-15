@@ -56,7 +56,7 @@ from pages.keyboard_page import KeyboardPage
 from pages.app_profiles_page import AppProfilesPage
 from pages.power_page import PowerPage
 
-APP_VERSION = "1.6.4"
+APP_VERSION = "1.6.5"
 CONFIG_FILE      = os.path.expanduser("~/.config/hp-manager.toml")
 CONFIG_FILE_JSON = os.path.expanduser("~/.config/hp-manager.json")
 _LAUNCHER_REFRESH_MS = 5000
@@ -747,7 +747,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             border-right: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 0px;
             box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
-            overflow: hidden;
+            padding: 8px 16px;
             transition: background-color 260ms ease, border-color 260ms ease, box-shadow 260ms ease, opacity 260ms ease;
         }}
         .sidebar-header-area {{
@@ -782,7 +782,7 @@ class HPManagerWindow(Gtk.ApplicationWindow):
             font-size: 11px;
             font-weight: 700;
             color: {fg_dim};
-            text-align: center;
+            margin-top: 24px;
             margin-top: 6px;
             padding: 0 4px;
             transition: opacity 180ms ease;

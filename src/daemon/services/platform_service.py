@@ -15,11 +15,19 @@ from common.dbus_helpers import run_service, system_sleeping
 from common.ec_controller import LinuxEcController
 import common.acpi_mapper as acpi_mapper
 from common.capabilities import get_cpu_model
+from pydbus.generic import signal
+
+try:
+    import evdev
+    HAS_EVDEV = True
+except ImportError:
+    HAS_EVDEV = False
 
 logger = setup_logging("platform")
 
 
 class PlatformService:
+    MacroKeyPressed = signal()
     """
     <node>
       <interface name="com.yyl.hpmanager.platform">
@@ -30,6 +38,7 @@ class PlatformService:
         <method name="GenerateHardwareDump"><arg type="s" name="dump" direction="out"/></method>
         <method name="GetHardwareDumpJson"><arg type="s" name="dump" direction="out"/></method>
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
+        <signal name="MacroKeyPressed"><arg type="s" name="key_name"/></signal>
       </interface>
     </node>
     """
@@ -38,6 +47,10 @@ class PlatformService:
         self._config = ServiceConfig("platform", {"prtsc_fix": False, "f1_fix": False})
         self._config.load()
         self.ec = LinuxEcController()
+        
+        if HAS_EVDEV:
+            self._macro_thread = threading.Thread(target=self._macro_listener_loop, daemon=True, name="MacroListener")
+            self._macro_thread.start()
 
         self._static_info = {
             "hostname": platform.node(),
@@ -401,6 +414,60 @@ class PlatformService:
 
     def Ping(self):
         return "OK"
+
+    def _macro_listener_loop(self):
+        """Monitors /dev/input/ devices for specific macro keys and emits a D-Bus signal."""
+        logger.info("Starting Macro listener thread...")
+        import select
+        
+        MACRO_KEYS = {
+            140: "calculator",
+            148: "omen_key",
+            149: "prog2",
+            191: "f21",
+            256: "btn_0",
+            257: "btn_1",
+            258: "btn_2",
+            259: "btn_3",
+            260: "btn_4",
+            261: "btn_5",
+        }
+        
+        devices = {}
+        poller = select.epoll()
+
+        def scan_devices():
+            current_paths = glob.glob("/dev/input/event*")
+            for path in current_paths:
+                if path not in devices:
+                    try:
+                        dev = evdev.InputDevice(path)
+                        if evdev.ecodes.EV_KEY in dev.capabilities():
+                            devices[path] = dev
+                            poller.register(dev.fd, select.EPOLLIN)
+                    except Exception:
+                        pass
+        
+        while True:
+            try:
+                scan_devices()
+                events = poller.poll(60.0)
+                for fd, _ in events:
+                    for dev in list(devices.values()):
+                        if dev.fd == fd:
+                            try:
+                                for event in dev.read():
+                                    if event.type == evdev.ecodes.EV_KEY and event.value == 1: # Key down
+                                        if event.code in MACRO_KEYS:
+                                            key_name = MACRO_KEYS[event.code]
+                                            logger.info(f"Macro Key Pressed: {key_name} (code: {event.code})")
+                                            self.MacroKeyPressed(key_name)
+                            except (OSError, IOError):
+                                poller.unregister(dev.fd)
+                                del devices[dev.path]
+            except Exception as e:
+                logger.error(f"Macro listener error: {e}")
+                time.sleep(5)
 
 
 def main():

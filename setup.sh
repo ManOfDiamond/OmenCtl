@@ -13,7 +13,7 @@ OMENCTL_LINK="/usr/bin/omenctl"
 CLI_LINK="/usr/bin/omen"
 UNINSTALLER_LINK="/usr/bin/hp-manager-uninstall"
 CONFIG_DIR="/etc/hp-manager"
-VERSION="1.6.4"
+VERSION="1.6.5"
 
 # Colors
 RED='\033[0;31m'
@@ -240,13 +240,13 @@ install_dependencies() {
     # Base packages — power manager NOT included here
     case $PM in
         pacman)
-            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo python-pystray python-pillow acpica
+            $INSTALL_CMD python python-gobject gtk4 libadwaita python-pydbus python-cairo python-pystray python-pillow python-evdev acpica cmake gcc make pciutils
             ;;
         apt)
-            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray python3-pil acpica-tools
+            $INSTALL_CMD python3 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 python3-pydbus python3-cairo python3-pystray python3-pil python3-evdev acpica-tools cmake gcc make libpci-dev
             ;;
         dnf|zypper)
-            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray python3-pillow acpica-tools
+            $INSTALL_CMD python3 python3-gobject gtk4 libadwaita python3-pydbus python3-cairo python-pystray python3-pillow python3-evdev acpica-tools cmake gcc make pciutils-devel
             ;;
     esac
 
@@ -637,6 +637,18 @@ do_install() {
     mkdir -p "$DATA_DIR/images"
     mkdir -p "$CONFIG_DIR"
 
+    # Compile and install RyzenAdj
+    if [ -d "src/third_party/RyzenAdj" ]; then
+        info "Compiling RyzenAdj..."
+        (
+            cd src/third_party/RyzenAdj
+            mkdir -p build && cd build
+            cmake -DCMAKE_BUILD_TYPE=Release ..
+            make -j$(nproc)
+            cp ryzenadj "$INSTALL_DIR/"
+        ) || warn "Failed to compile RyzenAdj. AMD specific tuning may be unavailable."
+    fi
+
     # Driver
     manage_driver "install"
 
@@ -672,6 +684,12 @@ do_install() {
     # Launcher script
     cat > "$BIN_LINK" << 'LAUNCHER'
 #!/bin/bash
+if [ "$1" = "uninstall" ]; then
+    shift
+    exec sudo hp-manager-uninstall "$@"
+elif [[ "$1" =~ ^(fan|performans|power|klavye|rgb|mux|help|dump)$ ]]; then
+    exec python3 /usr/libexec/hp-manager/omen-cli.py "$@"
+fi
 cd /usr/share/hp-manager/gui
 exec python3 /usr/share/hp-manager/gui/main_window.py "$@"
 LAUNCHER
@@ -735,6 +753,8 @@ AUTOSTART
     # Ensure drivers load on boot via modules-load.d
     echo "hp-rgb-lighting" > /etc/modules-load.d/hp-rgb-lighting.conf
     echo "hp-wmi"          > /etc/modules-load.d/hp-wmi.conf
+    echo "msr"             > /etc/modules-load.d/msr.conf
+    modprobe msr 2>/dev/null || true
 
     # Uninstaller — self-contained, does not rely on original script path
     cat > "$UNINSTALLER_LINK" << 'UNINSTALLER'
@@ -817,6 +837,7 @@ rm -f /etc/xdg/autostart/omenctl-bg.desktop
 rm -f /usr/share/icons/hicolor/48x48/apps/omenctl.png
 rm -f /etc/modules-load.d/hp-rgb-lighting.conf
 rm -f /etc/modules-load.d/hp-wmi.conf
+rm -f /etc/modules-load.d/msr.conf
 
 systemctl daemon-reload
 systemctl reload dbus 2>/dev/null || true

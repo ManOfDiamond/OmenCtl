@@ -151,24 +151,8 @@ class MUXService:
             "backend": self._mux.get_backend(),
             "available_backends": self._mux.get_available_backends(),
             "forced_backend": self._config.get("mux_backend", "auto"),
-            "mode": "unknown",
+            "mode": self._mux.get_mode(),
         }
-        threading.Thread(target=self._poll_loop, daemon=True).start()
-
-    def _poll_loop(self):
-        while True:
-            if system_sleeping.is_set():
-                time.sleep(0.5); continue
-            snap = {
-                "available": self._mux.is_available(),
-                "backend": self._mux.get_backend(),
-                "available_backends": self._mux.get_available_backends(),
-                "forced_backend": self._config.get("mux_backend", "auto"),
-                "mode": self._mux.get_mode(),
-            }
-            with self._cache_lock:
-                self._gpu_cache = snap
-            time.sleep(30.0)
 
     def SetGpuMode(self, mode):
         if mode not in VALID_GPU_MODES: return "FAIL"
@@ -196,7 +180,7 @@ class MUXService:
             with self._cache_lock:
                 self._gpu_cache["backend"] = backend
                 self._gpu_cache["forced_backend"] = backend
-                self._gpu_cache["mode"] = "unknown"
+                self._gpu_cache["mode"] = self._mux.get_mode()
             return "OK"
         return "FAIL"
 

@@ -28,67 +28,83 @@ state_cache = {
 }
 
 bus = None
+dbus_proxies = {}
 
 def get_bus():
     global bus
     if not bus:
         try:
             bus = SystemBus()
+            dbus_proxies.clear()
         except Exception:
             pass
     return bus
+
+def get_proxy(svc_name):
+    b = get_bus()
+    if not b: return None
+    if svc_name not in dbus_proxies:
+        try:
+            dbus_proxies[svc_name] = b.get(svc_name)
+        except Exception:
+            return None
+    return dbus_proxies[svc_name]
 
 def update_state_from_dbus():
     b = get_bus()
     if not b: return
     try:
-        power_svc = b.get("com.yyl.hpmanager.power")
-        prof = power_svc.GetPowerProfile().lower()
-        if prof == "default": prof = "balanced"
-        elif prof == "cool": prof = "power-saver"
-        state_cache["power"] = prof
-    except Exception: pass
+        power_svc = get_proxy("com.yyl.hpmanager.power")
+        if power_svc:
+            prof = power_svc.GetPowerProfile().lower()
+            if prof == "default": prof = "balanced"
+            elif prof == "cool": prof = "power-saver"
+            state_cache["power"] = prof
+    except Exception: dbus_proxies.pop("com.yyl.hpmanager.power", None)
     
     try:
-        fan_svc = b.get("com.yyl.hpmanager.fan")
-        fm = fan_svc.GetFanMode()
-        if isinstance(fm, str):
-            state_cache["fan"] = fm.lower()
-    except Exception: pass
+        fan_svc = get_proxy("com.yyl.hpmanager.fan")
+        if fan_svc:
+            fm = fan_svc.GetFanMode()
+            if isinstance(fm, str):
+                state_cache["fan"] = fm.lower()
+    except Exception: dbus_proxies.pop("com.yyl.hpmanager.fan", None)
     
     try:
-        mux_svc = b.get("com.yyl.hpmanager.mux")
-        state_cache["mux"] = mux_svc.GetGpuMode().lower()
-        info = json.loads(mux_svc.GetGpuInfo())
-        state_cache["mux_available"] = info.get("available", False)
-    except Exception: pass
+        mux_svc = get_proxy("com.yyl.hpmanager.mux")
+        if mux_svc:
+            state_cache["mux"] = mux_svc.GetGpuMode().lower()
+            info = json.loads(mux_svc.GetGpuInfo())
+            state_cache["mux_available"] = info.get("available", False)
+    except Exception: dbus_proxies.pop("com.yyl.hpmanager.mux", None)
 
     try:
-        rgb_svc = b.get("com.yyl.hpmanager.rgb")
-        rgb_state = json.loads(rgb_svc.GetState())
-        if not rgb_state.get("power", True):
-            state_cache["color"] = "off"
-        else:
-            colors = rgb_state.get("colors", [])
-            if colors and colors[0]:
-                c = colors[0].upper()
-                if c == "FF0000": state_cache["color"] = "red"
-                elif c == "00FF00": state_cache["color"] = "green"
-                elif c == "0000FF": state_cache["color"] = "blue"
-                elif c == "FFFFFF": state_cache["color"] = "white"
-                else: state_cache["color"] = "custom"
-    except Exception: pass
+        rgb_svc = get_proxy("com.yyl.hpmanager.rgb")
+        if rgb_svc:
+            rgb_state = json.loads(rgb_svc.GetState())
+            if not rgb_state.get("power", True):
+                state_cache["color"] = "off"
+            else:
+                colors = rgb_state.get("colors", [])
+                if colors and colors[0]:
+                    c = colors[0].upper()
+                    if c == "FF0000": state_cache["color"] = "red"
+                    elif c == "00FF00": state_cache["color"] = "green"
+                    elif c == "0000FF": state_cache["color"] = "blue"
+                    elif c == "FFFFFF": state_cache["color"] = "white"
+                    else: state_cache["color"] = "custom"
+    except Exception: dbus_proxies.pop("com.yyl.hpmanager.rgb", None)
 
 def run_dbus_call(svc_name, method_name, *args):
     def _call():
-        b = get_bus()
-        if b:
-            try:
-                svc = b.get(svc_name)
+        try:
+            svc = get_proxy(svc_name)
+            if svc:
                 getattr(svc, method_name)(*args)
                 update_state_from_dbus() # Refresh state after call
-            except Exception as e:
-                print(f"DBus error {svc_name}.{method_name}: {e}")
+        except Exception as e:
+            print(f"DBus error {svc_name}.{method_name}: {e}")
+            dbus_proxies.pop(svc_name, None)
     threading.Thread(target=_call, daemon=True).start()
 
 def set_power(icon, item):
@@ -154,6 +170,32 @@ def bg_updater():
         update_state_from_dbus()
         time.sleep(5)
 
+def macro_listener_loop():
+    try:
+        from gi.repository import GLib
+        b = get_bus()
+        if not b: return
+        platform_svc = b.get("com.yyl.hpmanager.platform")
+        
+        def on_macro(key_name):
+            try:
+                config_path = os.path.expanduser("~/.config/hp-manager/macros.json")
+                if os.path.exists(config_path):
+                    with open(config_path, "r") as f:
+                        macros = json.load(f)
+                    cmd = macros.get(key_name)
+                    if cmd:
+                        print(f"Executing macro for {key_name}: {cmd}")
+                        subprocess.Popen(cmd, shell=True)
+            except Exception as e:
+                print(f"Macro error: {e}")
+                
+        platform_svc.onMacroKeyPressed = on_macro
+        loop = GLib.MainLoop()
+        loop.run()
+    except Exception as e:
+        print(f"Failed to setup macro listener: {e}")
+
 def main():
     icon_path = "/usr/share/icons/hicolor/48x48/apps/omenctl.png"
     if not os.path.exists(icon_path):
@@ -168,6 +210,7 @@ def main():
 
     update_state_from_dbus()
     threading.Thread(target=bg_updater, daemon=True).start()
+    threading.Thread(target=macro_listener_loop, daemon=True).start()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open OmenCtl", on_open, default=True),

@@ -108,7 +108,7 @@ class LightingPage(Gtk.Box):
             self.brightness_scale.set_value(self.brightness)
             self.speed_scale.set_value(self.speed)
 
-            modes = ["static", "breathing", "wave", "cycle"]
+            modes = ["static", "breathing", "wave", "cycle", "rainbow", "pulse", "chase", "sparkle", "candle", "aurora", "disco", "gradient"]
             if self.mode in modes:
                 self.mode_dd.set_selected(modes.index(self.mode))
 
@@ -233,7 +233,10 @@ class LightingPage(Gtk.Box):
         grid = Gtk.Grid(column_spacing=30, row_spacing=15, halign=Gtk.Align.CENTER)
 
         grid.attach(Gtk.Label(label=T("effect"), xalign=1, css_classes=["section-title"]), 0, 0, 1, 1)
-        self.mode_dd = Gtk.DropDown(model=Gtk.StringList.new([T("static_eff"), T("breathing"), T("wave"), T("cycle")]))
+        self.mode_dd = Gtk.DropDown(model=Gtk.StringList.new([
+            T("static_eff"), T("breathing"), T("wave"), T("cycle"),
+            "Rainbow", "Pulse", "Chase", "Sparkle", "Candle", "Aurora", "Disco", "Gradient"
+        ]))
         self.mode_dd.connect("notify::selected", self._on_mode)
         grid.attach(self.mode_dd, 1, 0, 1, 1)
 
@@ -265,6 +268,17 @@ class LightingPage(Gtk.Box):
 
         scroll.set_child(content)
         self.append(scroll)
+
+        # Subtle developer signature
+        sig = Gtk.Label(label="developed by omenlinux.alessandromarcon.dev")
+        sig.set_opacity(0.18)
+        sig.set_halign(Gtk.Align.END)
+        sig.set_margin_end(8)
+        sig.set_margin_bottom(4)
+        sig.add_css_class("stat-lbl")
+        self.append(sig)
+        self._signature_label = sig
+
         self.set_ui_scale("normal")
 
     def set_ui_scale(self, bucket, _width=0, _height=0):
@@ -310,6 +324,10 @@ class LightingPage(Gtk.Box):
         if grid is not None:
             grid.set_column_spacing(18 if bucket == "compact" else 36 if bucket == "spacious" else 30)
             grid.set_row_spacing(12 if bucket == "compact" else 18 if bucket == "spacious" else 15)
+
+        sig = getattr(self, "_signature_label", None)
+        if sig is not None:
+            sig.set_margin_end(6 if bucket == "compact" else 10 if bucket == "spacious" else 8)
 
     def _on_zone_select(self, zone):
         self.selected_zone = zone
@@ -370,7 +388,7 @@ class LightingPage(Gtk.Box):
                 root.present()
 
     def _on_mode(self, dd, _):
-        modes = ["static", "breathing", "wave", "cycle"]
+        modes = ["static", "breathing", "wave", "cycle", "rainbow", "pulse", "chase", "sparkle", "candle", "aurora", "disco", "gradient"]
         self.mode = modes[dd.get_selected()]
         self.kb_preview.mode = self.mode
         self.kb_preview.queue_draw()

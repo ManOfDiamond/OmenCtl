@@ -54,14 +54,37 @@ class PowerPage(Gtk.Box):
             header.append(img)
         
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        title = Gtk.Label(label=T("power_tuning"), xalign=0, css_classes=["title-1"])
-        title_box.append(title)
+        
+        title_row = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+        title_row.append(Gtk.Label(label=T("power_tuning"), xalign=0, css_classes=["title-1"]))
+        
+        badge = Gtk.Box(valign=Gtk.Align.CENTER)
+        badge.add_css_class("osd")
+        lbl = Gtk.Label(label="EXPERIMENTAL", css_classes=["caption", "accent"])
+        lbl.set_margin_start(8)
+        lbl.set_margin_end(8)
+        lbl.set_margin_top(2)
+        lbl.set_margin_bottom(2)
+        badge.append(lbl)
+        title_row.append(badge)
+        
+        title_box.append(title_row)
+        
         desc = Gtk.Label(label=T("power_tuning_desc"), xalign=0, css_classes=["dim-label"])
         title_box.append(desc)
         header.append(title_box)
         root.append(header)
 
         root.append(Gtk.Separator())
+
+        # Determine CPU Vendor for dynamic UI terminology
+        is_amd = False
+        try:
+            with open("/proc/cpuinfo", "r") as f:
+                if "AuthenticAMD" in f.read():
+                    is_amd = True
+        except Exception:
+            pass
 
         # ── UNDERVOLT CARD ──
         uv_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
@@ -70,19 +93,22 @@ class PowerPage(Gtk.Box):
         
         uv_header = Gtk.Box(spacing=10)
         uv_header.append(Gtk.Image.new_from_icon_name("system-run-symbolic"))
-        uv_header.append(Gtk.Label(label=T("undervolt_label"), xalign=0, css_classes=["heading"]))
+        uv_title = "Curve Optimizer (AMD)" if is_amd else T("undervolt_label")
+        uv_header.append(Gtk.Label(label=uv_title, xalign=0, css_classes=["heading"]))
         uv_card.append(uv_header)
 
         uv_box = Gtk.Box(spacing=15)
         uv_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
-        uv_info.append(Gtk.Label(label=T("undervolt_label"), xalign=0, css_classes=["title-4"]))
+        uv_info.append(Gtk.Label(label=uv_title, xalign=0, css_classes=["title-4"]))
         uv_info.append(Gtk.Label(label=T("undervolt_desc"), xalign=0, css_classes=["dim-label"], wrap=True))
         uv_box.append(uv_info)
         
+        # AMD Curve Optimizer goes negative (-30 is common), Intel is also negative (mV)
         self.uv_spin = Gtk.SpinButton.new_with_range(-200, 0, 5)
         self.uv_spin.set_valign(Gtk.Align.CENTER)
         uv_box.append(self.uv_spin)
-        uv_box.append(Gtk.Label(label="mV", valign=Gtk.Align.CENTER))
+        uv_suffix = "Steps" if is_amd else "mV"
+        uv_box.append(Gtk.Label(label=uv_suffix, valign=Gtk.Align.CENTER))
         uv_card.append(uv_box)
         
         root.append(uv_card)
@@ -94,12 +120,13 @@ class PowerPage(Gtk.Box):
         
         tcc_header = Gtk.Box(spacing=10)
         tcc_header.append(Gtk.Image.new_from_icon_name("weather-clear-symbolic"))
-        tcc_header.append(Gtk.Label(label=T("tcc_label"), xalign=0, css_classes=["heading"]))
+        tcc_title = "Thermal Limit Offset (AMD)" if is_amd else T("tcc_label")
+        tcc_header.append(Gtk.Label(label=tcc_title, xalign=0, css_classes=["heading"]))
         tcc_card.append(tcc_header)
 
         tcc_box = Gtk.Box(spacing=15)
         tcc_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
-        tcc_info.append(Gtk.Label(label=T("tcc_label"), xalign=0, css_classes=["title-4"]))
+        tcc_info.append(Gtk.Label(label=tcc_title, xalign=0, css_classes=["title-4"]))
         tcc_info.append(Gtk.Label(label=T("tcc_desc"), xalign=0, css_classes=["dim-label"], wrap=True))
         tcc_box.append(tcc_info)
         
@@ -161,6 +188,15 @@ class PowerPage(Gtk.Box):
         self.apply_btn.connect("clicked", self._on_apply)
         footer.append(self.apply_btn)
         root.append(footer)
+        
+        # Attribution
+        attr_box = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.END)
+        attr_box.set_margin_top(8)
+        attr_text = "powered by flygoat/RyzenAdj" if is_amd else "powered by georgewhewell/undervolt"
+        attr_label = Gtk.Label(label=attr_text, css_classes=["dim-label"])
+        attr_label.set_opacity(0.4)
+        attr_box.append(attr_label)
+        root.append(attr_box)
 
         self._sync_state()
         self.set_ui_scale("normal")

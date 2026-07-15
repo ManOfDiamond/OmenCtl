@@ -37,6 +37,20 @@ THERMAL_PROFILE_BALANCED = 0
 
 _dbus_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="pwr-dbus")
 
+def is_amd_cpu():
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            return "AuthenticAMD" in f.read()
+    except Exception:
+        return False
+
+# Attempt to load native intel_undervolt
+try:
+    import intel_undervolt
+    HAS_INTEL_UV = True
+except ImportError:
+    HAS_INTEL_UV = False
+
 
 def _dbus_call(fn, *args, timeout=3.0):
     """Run a D-Bus proxy call with a timeout to avoid indefinite blocking."""
@@ -575,10 +589,22 @@ class PowerService:
         self._config.set("undervolt_mv", mv)
         self._config.save()
         try:
-            if shutil.which("intel-undervolt"):
-                subprocess.run(["intel-undervolt", "apply"], capture_output=True)
-            elif shutil.which("ryzenadj"):
-                subprocess.run(["ryzenadj", f"--curve-opt={mv}"], capture_output=True)
+            if is_amd_cpu():
+                # AMD Curve Optimizer (Negative = Undervolt)
+                ryzen_bin = "/usr/libexec/hp-manager/ryzenadj"
+                if os.path.exists(ryzen_bin):
+                    subprocess.run([ryzen_bin, f"--curve-opt={mv}"], capture_output=True)
+                elif shutil.which("ryzenadj"):
+                    subprocess.run(["ryzenadj", f"--curve-opt={mv}"], capture_output=True)
+            else:
+                # Intel Core & Cache Undervolt
+                if HAS_INTEL_UV:
+                    # Apply offset to Core (0) and Cache (2)
+                    off_val = intel_undervolt.convert_offset(mv)
+                    intel_undervolt.write_msr(intel_undervolt.pack_offset(0, off_val), intel_undervolt.ADDRESSES.addr_voltage_offsets)
+                    intel_undervolt.write_msr(intel_undervolt.pack_offset(2, off_val), intel_undervolt.ADDRESSES.addr_voltage_offsets)
+                elif shutil.which("intel-undervolt"):
+                    subprocess.run(["intel-undervolt", "apply"], capture_output=True)
         except Exception as e:
             logger.debug("Failed to apply undervolt: %s", e)
         return "OK"
@@ -593,11 +619,19 @@ class PowerService:
         self._config.set("tcc_offset", val)
         self._config.save()
         try:
-            if shutil.which("wrmsr"):
-                # MSR 0x1a2 is MSR_TEMPERATURE_TARGET
-                subprocess.run(["wrmsr", "-a", "0x1a2", f"{val:x}000000"], capture_output=True)
-            elif shutil.which("ryzenadj"):
-                subprocess.run(["ryzenadj", f"--max-temp={100 - val}"], capture_output=True)
+            if is_amd_cpu():
+                # AMD Max Temp Limit
+                ryzen_bin = "/usr/libexec/hp-manager/ryzenadj"
+                if os.path.exists(ryzen_bin):
+                    subprocess.run([ryzen_bin, f"--max-temp={100 - val}"], capture_output=True)
+                elif shutil.which("ryzenadj"):
+                    subprocess.run(["ryzenadj", f"--max-temp={100 - val}"], capture_output=True)
+            else:
+                # Intel TCC Offset (MSR 0x1a2)
+                if HAS_INTEL_UV:
+                    intel_undervolt.set_temperature(100 - val, intel_undervolt.ADDRESSES)
+                elif shutil.which("wrmsr"):
+                    subprocess.run(["wrmsr", "-a", "0x1a2", f"{val:x}000000"], capture_output=True)
         except Exception as e:
             logger.debug("Failed to apply TCC offset: %s", e)
         return "OK"
@@ -611,14 +645,19 @@ class PowerService:
         if not enabled:
             return "OK"
         try:
-            rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw"
-            rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw"
-            if sysfs_exists(rapl1):
-                sysfs_write(rapl1, int(pl1) * 1000000)
-            if sysfs_exists(rapl2):
-                sysfs_write(rapl2, int(pl2) * 1000000)
-            if shutil.which("ryzenadj"):
-                subprocess.run(["ryzenadj", f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+            if is_amd_cpu():
+                ryzen_bin = "/usr/libexec/hp-manager/ryzenadj"
+                if os.path.exists(ryzen_bin):
+                    subprocess.run([ryzen_bin, f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+                elif shutil.which("ryzenadj"):
+                    subprocess.run(["ryzenadj", f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+            else:
+                rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw"
+                rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw"
+                if sysfs_exists(rapl1):
+                    sysfs_write(rapl1, int(pl1) * 1000000)
+                if sysfs_exists(rapl2):
+                    sysfs_write(rapl2, int(pl2) * 1000000)
         except Exception as e:
             logger.debug("Failed to apply power limits: %s", e)
         return "OK"

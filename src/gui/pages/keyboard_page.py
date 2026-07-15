@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Keyboard & Shortcuts Page — tailored for OMEN/Victus hotkeys."""
 import os, platform, subprocess, json
+# pyrefly: ignore [missing-import]
 import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, GLib
@@ -79,22 +80,6 @@ class KeyboardPage(Gtk.Box):
 
         root.append(Gtk.Separator())
 
-        # ── SPECIAL KEYS ──
-        keys_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
-        keys_card.add_css_class("card")
-        self._keys_card = keys_card
-        keys_card.append(Gtk.Label(label=T("special_keys"), xalign=0, css_classes=["heading"]))
-        
-        # Removed Omen Key visually per user request.
-
-        if self.model_type == "victus":
-            calc_row = self._make_shortcut_row(T("calculator"), 
-                                            "Launches Calculator application.", 
-                                            "accessories-calculator-symbolic")
-            keys_card.append(calc_row)
-        
-        root.append(keys_card)
-
         # ── KEYBOARD FIXES (The main meat) ──
         fix_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         fix_card.add_css_class("card")
@@ -128,6 +113,38 @@ class KeyboardPage(Gtk.Box):
         fix_card.append(f1_box)
 
         root.append(fix_card)
+        
+        # ── MACROS (Commands) ──
+        macro_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        macro_card.add_css_class("card")
+        self._macro_card = macro_card
+        
+        macro_header = Gtk.Box(spacing=10)
+        macro_header.append(Gtk.Image.new_from_icon_name("preferences-desktop-keyboard-shortcuts-symbolic"))
+        macro_header.append(Gtk.Label(label="Macros & Commands", xalign=0, css_classes=["heading"]))
+        macro_card.append(macro_header)
+        
+        macro_desc = Gtk.Label(label="Assign terminal commands or click the icon to choose an application.", xalign=0, css_classes=["dim-label"])
+        macro_card.append(macro_desc)
+        
+        self.macro_entries = {}
+        for m_id, m_name in [("omen_key", "Omen Key"), ("calculator", "Calculator Key")]:
+            m_box = Gtk.Box(spacing=15)
+            lbl = Gtk.Label(label=m_name, xalign=0, css_classes=["title-4"])
+            lbl.set_size_request(130, -1)
+            m_box.append(lbl)
+            entry = Gtk.Entry(placeholder_text="Terminal command...", hexpand=True)
+            self.macro_entries[m_id] = entry
+            m_box.append(entry)
+            
+            btn = Gtk.Button(icon_name="application-x-executable-symbolic")
+            btn.set_tooltip_text("Choose installed application")
+            btn.connect("clicked", lambda b, e=entry: self._show_app_chooser(e))
+            m_box.append(btn)
+            
+            macro_card.append(m_box)
+            
+        root.append(macro_card)
 
         # Footer Action
         footer = Gtk.Box(spacing=12, halign=Gtk.Align.END)
@@ -202,12 +219,35 @@ class KeyboardPage(Gtk.Box):
             self.prtsc_sw.set_active(st.get("prtsc_fix", False))
             self.f1_sw.set_active(st.get("f1_fix", False))
         except Exception: pass
+        
+        try:
+            config_path = os.path.expanduser("~/.config/hp-manager/macros.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    macros = json.load(f)
+                for k, v in macros.items():
+                    if k in getattr(self, "macro_entries", {}):
+                        self.macro_entries[k].set_text(v)
+        except Exception: pass
 
     def _on_apply(self, btn):
         if not self.service: return
         p = self.prtsc_sw.get_active()
         f = self.f1_sw.get_active()
         
+        try:
+            macros = {}
+            for k, entry in getattr(self, "macro_entries", {}).items():
+                t = entry.get_text().strip()
+                if t:
+                    macros[k] = t
+            config_dir = os.path.expanduser("~/.config/hp-manager")
+            os.makedirs(config_dir, exist_ok=True)
+            with open(os.path.join(config_dir, "macros.json"), "w") as f_obj:
+                json.dump(macros, f_obj)
+        except Exception as e:
+            print(f"Failed to save macros: {e}")
+            
         try:
             self.service.SetKeyboardFixes(p, f)
             
@@ -222,4 +262,68 @@ class KeyboardPage(Gtk.Box):
             toast.present()
         except Exception as e:
             print(f"Apply shortcuts failed: {e}")
+
+    def _show_app_chooser(self, entry_widget):
+        class AppChooserDialog(Gtk.Dialog):
+            def __init__(self, parent, entry):
+                super().__init__(title="Select Application", transient_for=parent, use_header_bar=1)
+                self.set_default_size(400, 500)
+                self.entry = entry
+                
+                box = self.get_content_area()
+                box.set_spacing(10)
+                box.set_margin_start(10)
+                box.set_margin_end(10)
+                box.set_margin_top(10)
+                box.set_margin_bottom(10)
+                
+                from gi.repository import Gio
+                apps = Gio.AppInfo.get_all()
+                apps = sorted([a for a in apps if a.should_show()], key=lambda x: (x.get_name() or "").lower())
+                
+                scroll = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+                scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                listbox = Gtk.ListBox()
+                listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+                listbox.connect("row-activated", self.on_row_activated)
+                
+                for app in apps:
+                    row = Gtk.ListBoxRow()
+                    hbox = Gtk.Box(spacing=15)
+                    hbox.set_margin_start(10)
+                    hbox.set_margin_end(10)
+                    hbox.set_margin_top(8)
+                    hbox.set_margin_bottom(8)
+                    
+                    icon = app.get_icon()
+                    if icon:
+                        img = Gtk.Image.new_from_gicon(icon)
+                    else:
+                        img = Gtk.Image.new_from_icon_name("application-x-executable")
+                    img.set_pixel_size(32)
+                    hbox.append(img)
+                    
+                    vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                    vbox.append(Gtk.Label(label=app.get_name(), xalign=0))
+                    vbox.append(Gtk.Label(label=app.get_description() or "", xalign=0, css_classes=["dim-label", "caption"]))
+                    hbox.append(vbox)
+                    
+                    row.set_child(hbox)
+                    row.app_info = app
+                    listbox.append(row)
+                    
+                scroll.set_child(listbox)
+                box.append(scroll)
+                
+            def on_row_activated(self, listbox, row):
+                app = row.app_info
+                cmd = app.get_executable()
+                desktop_id = app.get_id()
+                if desktop_id:
+                    cmd = f"gtk-launch {desktop_id}"
+                self.entry.set_text(cmd)
+                self.destroy()
+
+        dialog = AppChooserDialog(self.get_root(), entry_widget)
+        dialog.present()
 

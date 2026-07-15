@@ -1121,6 +1121,20 @@ class FanPage(Gtk.Box):
         content.set_margin_end(24)
         content.set_margin_bottom(20)
         self._content_box = content
+        
+        # Fan Control Status Box (Top Right)
+        top_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        top_bar.set_halign(Gtk.Align.END)
+        self.fc_status_badge = Gtk.Box(valign=Gtk.Align.CENTER)
+        self.fc_status_badge.add_css_class("osd")
+        self.fc_status_lbl = Gtk.Label(label="Fan Control: Checking...", css_classes=["caption", "accent"])
+        self.fc_status_lbl.set_margin_start(10)
+        self.fc_status_lbl.set_margin_end(10)
+        self.fc_status_lbl.set_margin_top(2)
+        self.fc_status_lbl.set_margin_bottom(2)
+        self.fc_status_badge.append(self.fc_status_lbl)
+        top_bar.append(self.fc_status_badge)
+        content.append(top_bar)
 
         # ─── 1. DYNAMIC CENTERED SPEEDOMETER GAUGES & COMPACT RAM BRIDGE ───
         gauges_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=32, halign=Gtk.Align.CENTER)
@@ -1848,6 +1862,14 @@ class FanPage(Gtk.Box):
         sensors = data.get("all_sensors", [])
         gpu_tgp_state = data.get("gpu_tgp_state", False)
         gpu_ppab_state = data.get("gpu_ppab_state", False)
+
+        # Update Fan Control Status Box
+        if fan_info.get("available", False):
+            self.fc_status_lbl.set_label(T("fan_active") if "fan_active" in globals() else "Fan Control: Active")
+            self.fc_status_lbl.set_css_classes(["caption", "success"])
+        else:
+            self.fc_status_lbl.set_label(T("fan_inactive") if "fan_inactive" in globals() else "Fan Control: Inactive")
+            self.fc_status_lbl.set_css_classes(["caption", "error"])
 
         # On first refresh, sync fan control mode from daemon's actual state
         if not self._fan_mode_synced and fan_info:

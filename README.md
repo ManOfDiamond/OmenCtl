@@ -1,4 +1,4 @@
-# OmenCtl v1.6.4
+# OmenCtl v1.6.5
 <p align="center">
   <img src="images/omenctl.png" alt="OmenCtl Logo" width="160">
 </p>
@@ -42,13 +42,23 @@
 
 ---
 
+## 🌟 What's New in v1.6.5
+
+* **Major Architectural Upgrades**: Completely refactored the D-Bus service architecture. Removed unnecessary 30-second polling loops in the MUX service, resolving D3cold (GPU suspend) issues on NVIDIA Optimus laptops.
+* **CPU & Memory Optimizations**: The UI now intelligently caches D-Bus proxies and reduces platform polling to 60 seconds (up from 2s), drastically reducing idle CPU usage and memory leaks.
+* **Refined UI/UX**: Added sleek, non-intrusive `EXPERIMENTAL` badges to the Power and Keyboard pages. The Performance page now features a real-time `Fan Control` status indicator.
+* **Enhanced Macro System**: You can now select applications seamlessly with a fully-featured application chooser dialog (with icons) instead of just typing commands.
+* **Localization**: Full translation coverage across all menus, with the app defaulting to English. Added proper attributions for `RyzenAdj` and `undervolt` in the Power Tuning page.
+
+---
+
 ## 💾 Installation & Upgrades
 
 ### Prerequisites
 * A compatible Linux distribution (Ubuntu, Fedora, Arch, OpenSUSE, CachyOS, etc.)
 * `git` installed
 
-### Installation (v1.6.4)
+### Installation (v1.6.5)
 Open your terminal and run:
 ```bash
 # Clone the repository
@@ -59,6 +69,16 @@ cd OmenCtl
 chmod +x setup.sh
 sudo ./setup.sh install
 ```
+If you wish to uninstall OmenCtl, you can run the following command:
+```bash
+omenctl uninstall
+```
+
+## Credits & Acknowledgements
+* Special thanks to the creator of the [omen-rgb-keyboard](https://github.com/OmenLinux/omen-rgb-keyboard) kernel module, which provides the hardware-accelerated RGB lighting effects used in this project.
+* Undervolting and CPU tuning on AMD processors is powered by [RyzenAdj](https://github.com/FlyGoat/RyzenAdj).
+* Undervolting on Intel processors is powered by [undervolt](https://github.com/georgewhewell/undervolt).
+
 *(To upgrade an existing installation without losing configuration, run `sudo ./setup.sh update`)*
 
 ### NixOS Installation (Flake)
