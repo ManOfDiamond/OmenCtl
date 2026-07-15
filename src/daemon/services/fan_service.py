@@ -204,8 +204,8 @@ class FanController:
             logger.info("pwm1_enable write failed for custom, falling back to direct pwm1 write availability")
             ok = True
 
-        if not ok and mode == "max":
-            logger.info("pwm1_enable write failed for max, trying platform profile fallback")
+        if mode == "max":
+            logger.info("Syncing platform profile for max mode")
             for profile_path, profile_value in (
                 ("/sys/devices/platform/hp-wmi/thermal_profile", "1"),
                 ("/sys/devices/platform/hp-omen/thermal_profile", "1"),
@@ -224,8 +224,8 @@ class FanController:
                 if sysfs_write(os.path.join(self.hwmon_path, "pwm1"), 255):
                     ok = True
 
-        if not ok and mode == "auto":
-            logger.info("pwm1_enable write failed for auto, trying platform profile fallback")
+        if mode == "auto":
+            logger.info("Syncing platform profile for auto mode")
             for profile_path, profile_value in (
                 ("/sys/devices/platform/hp-wmi/thermal_profile", "0"),
                 ("/sys/devices/platform/hp-omen/thermal_profile", "0"),
@@ -457,16 +457,28 @@ class FanService:
 
             temp = self._get_max_temp()
 
+            fans_stalled = False
+            mode = self._fan.get_mode()
+            if mode != "max" and temp > 75.0:
+                speeds = [self._fan.get_current_speed(i) for i in range(1, self._fan.get_fan_count() + 1)]
+                if speeds and all(s < 100 for s in speeds):
+                    fans_stalled = True
+
             # Thermal Protection Mode
-            if temp > 95.0 and not self._thermal_protection_active:
-                logger.warning("Temperature exceeded 95°C (%d°C). Activating Thermal Protection Mode (Max Fan).", temp)
+            if (temp > 95.0 or fans_stalled) and not self._thermal_protection_active:
+                if fans_stalled:
+                    logger.critical("FAN STALL DETECTED! Temp is %d°C but fans are at 0 RPM! Activating Protection.", temp)
+                else:
+                    logger.warning("Temperature exceeded 95°C (%d°C). Activating Thermal Protection Mode (Max Fan).", temp)
                 self._thermal_protection_active = True
                 self._thermal_protection_entered_at = time.monotonic()
-                self._pre_protection_mode = self._config.get("fan_mode", self._fan.get_mode())
+                self._pre_protection_mode = self._config.get("fan_mode", mode)
                 self._fan.set_mode("max")
+                
+                reason = "Fanlarınız dış bir müdahale ile durdurulduğu için" if fans_stalled else "Yüksek sıcaklıklardan cihazınızı korumak için"
                 send_desktop_notification(
                     "OmenCtl Koruma Modu",
-                    "Yüksek sıcaklıklardan cihazınızı korumak için max fan modu aktif edildi."
+                    f"{reason} max fan modu aktif edildi."
                 )
             elif self._thermal_protection_active:
                 elapsed = time.monotonic() - self._thermal_protection_entered_at

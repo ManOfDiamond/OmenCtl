@@ -100,11 +100,13 @@ class MUXController:
             return f"Error: Invalid mode '{mode}'"
         try:
             env = dict(os.environ, PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+            requires_reboot = False
             if self.backend == "envycontrol" and self.envycontrol:
                 m = {"hybrid":"hybrid","discrete":"nvidia","integrated":"integrated"}.get(mode)
                 if m is None:
                     return f"Error: Unsupported mode '{mode}' for envycontrol"
                 subprocess.run([self.envycontrol, "-s", m], check=True, capture_output=True, text=True, env=env, timeout=10)
+                requires_reboot = True
             elif self.backend == "supergfxctl" and self.supergfxctl:
                 m = {"hybrid":"Hybrid","discrete":"Dedicated","integrated":"Integrated"}.get(mode)
                 if m is None:
@@ -115,11 +117,12 @@ class MUXController:
                 if m is None:
                     return f"Error: Unsupported mode '{mode}' for prime-select"
                 subprocess.run([self.prime_select, m], check=True, capture_output=True, text=True, env=env, timeout=10)
+                requires_reboot = True
             else:
                 return "No backend"
             self._cached_mode = mode
             self._last_check = time.time()
-            return "OK"
+            return "OK_REBOOT_REQUIRED" if requires_reboot else "OK"
         except subprocess.CalledProcessError as e:
             return f"Error: {e.stderr.strip() or e}"
         except Exception as e:

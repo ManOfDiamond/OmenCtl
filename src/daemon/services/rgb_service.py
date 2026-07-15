@@ -198,12 +198,14 @@ class AnimationEngine(threading.Thread):
             if loop_start - getattr(self, "_last_poll", 0.0) > 2.0:
                 self._last_poll = loop_start
                 hw_pwr = self.rgb.read_brightness()
-                if hw_pwr is not None and hw_pwr != pwr:
-                    logger.info("Hardware backlight state changed to %s, syncing config", hw_pwr)
-                    self.config.set("power", hw_pwr)
-                    self.config.save()
-                    pwr = hw_pwr
-                    snap["power"] = hw_pwr
+                if hw_pwr is not None and hw_pwr != getattr(self, "_last_hw_pwr", None):
+                    self._last_hw_pwr = hw_pwr
+                    if hw_pwr != pwr:
+                        logger.info("Hardware backlight state changed to %s, syncing config", hw_pwr)
+                        self.config.set("power", hw_pwr)
+                        self.config.save()
+                        pwr = hw_pwr
+                        snap["power"] = hw_pwr
             
             mode = str(snap.get("mode", "static"))
             bri = float(snap.get("brightness", 100)) / 100.0
@@ -302,10 +304,13 @@ class AnimationEngine(threading.Thread):
 
                     if self._zone_changed(new_color, self._last_wave[i]):
                         self._last_wave[i] = new_color
-                        self.rgb.write_zone(
-                            i,
-                            f"{new_color[0]:02X}{new_color[1]:02X}{new_color[2]:02X}",
-                        )
+                        try:
+                            self.rgb.write_zone(
+                                i,
+                                f"{new_color[0]:02X}{new_color[1]:02X}{new_color[2]:02X}",
+                            )
+                        except Exception as e:
+                            pass
                 self._last_uniform = (-1, -1, -1)
                 sleep_time = max(
                     self.FRAME_TIME_WAVE - (time.time() - loop_start), 0.001

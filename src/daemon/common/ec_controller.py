@@ -57,6 +57,16 @@ class LinuxEcController:
                 subprocess.run(["modprobe", "ec_sys", "write_support=1"], capture_output=True, timeout=5)
             except Exception as e:
                 logger.debug("modprobe ec_sys failed: %s", e)
+                
+            if not os.path.exists(EC_PATH):
+                if os.path.exists("/sys/kernel/security/lockdown"):
+                    try:
+                        with open("/sys/kernel/security/lockdown") as f:
+                            ld = f.read().strip()
+                            if "[integrity]" in ld or "[confidentiality]" in ld:
+                                logger.warning("EC fallback unavailable: Kernel lockdown is active, likely due to Secure Boot. ec_sys write_support is blocked.")
+                    except Exception:
+                        pass
 
     def read_byte(self, reg: int) -> int:
         """Read a single byte from the EC register."""

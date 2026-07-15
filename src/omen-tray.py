@@ -43,7 +43,10 @@ def update_state_from_dbus():
     if not b: return
     try:
         power_svc = b.get("com.yyl.hpmanager.power")
-        state_cache["power"] = power_svc.GetPowerProfile().lower()
+        prof = power_svc.GetPowerProfile().lower()
+        if prof == "default": prof = "balanced"
+        elif prof == "cool": prof = "power-saver"
+        state_cache["power"] = prof
     except Exception: pass
     
     try:
@@ -56,6 +59,8 @@ def update_state_from_dbus():
     try:
         mux_svc = b.get("com.yyl.hpmanager.mux")
         state_cache["mux"] = mux_svc.GetGpuMode().lower()
+        info = json.loads(mux_svc.GetGpuInfo())
+        state_cache["mux_available"] = info.get("available", False)
     except Exception: pass
 
     try:
@@ -180,7 +185,7 @@ def main():
         pystray.MenuItem("GPU Mode", pystray.Menu(
             pystray.MenuItem("Hybrid", set_mux, checked=is_mux, radio=True),
             pystray.MenuItem("Discrete", set_mux, checked=is_mux, radio=True)
-        )),
+        ), visible=lambda item: state_cache.get("mux_available", False)),
         pystray.MenuItem("Keyboard Lighting", pystray.Menu(
             pystray.MenuItem("Off", set_color, checked=is_color, radio=True),
             pystray.MenuItem("Red", set_color, checked=is_color, radio=True),

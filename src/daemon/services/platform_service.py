@@ -67,6 +67,7 @@ class PlatformService:
 
         self._cache_lock = threading.Lock()
         self._info_cache: typing.Dict[str, typing.Any] = {}
+        self._last_dbus_call_time = 0.0
 
         # Restore keyboard fixes
         if self._config.get("prtsc_fix") or self._config.get("f1_fix"):
@@ -184,6 +185,11 @@ class PlatformService:
                 except Exception: pass
 
             now = time.time()
+            if now - getattr(self, "_last_dbus_call_time", 0.0) > 15.0:
+                stats["temp"] = max(stats["temp"], self._nv_temp_cache)
+                stats["vram_used"] = self._nv_vram_cache
+                return stats
+
             if now < self._nv_fail_cooldown:
                 stats["temp"] = max(stats["temp"], self._nv_temp_cache)
                 stats["vram_used"] = self._nv_vram_cache
@@ -240,6 +246,7 @@ class PlatformService:
     # ── D-Bus methods ─────────────────────────────────────────────────
 
     def GetSystemInfo(self):
+        self._last_dbus_call_time = time.time()
         with self._cache_lock:
             return json.dumps(self._info_cache)
 

@@ -88,6 +88,7 @@ KNOWN_MODELS = {
     "8C58": ModelCapabilities("8C58", "OMEN 16 Transcend", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8D24": ModelCapabilities("8D24", "OMEN 16 (2024)", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8D26": ModelCapabilities("8D26", "OMEN 16 (2024) AMD", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
+    "8BCD": ModelCapabilities("8BCD", "OMEN by HP Gaming Laptop 16-xd0xxx", model_year=2023, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8E35": ModelCapabilities("8E35", "OMEN MAX 16t-ah000", model_year=2025, family="OMEN", has_mux_switch=True, supports_fan_control_ec=True),
     "8E41": ModelCapabilities("8E41", "OMEN MAX 16-ah0xxx", model_year=2025, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
     "8C77": ModelCapabilities("8C77", "OMEN by HP Gaming Laptop 16-wf1xxx", model_year=2024, family="OMEN", has_mux_switch=True, supports_fan_control_ec=False),
