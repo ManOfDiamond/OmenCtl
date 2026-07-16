@@ -51,22 +51,54 @@ class LinuxEcController:
 
     def _ensure_ec_sys(self):
         """Ensure ec_sys module is loaded with write_support=1."""
-        if not os.path.exists(EC_PATH):
+        if os.path.exists(EC_PATH):
+            return  # Already available
+
+        # ec0/io lives under debugfs — make sure it is mounted first.
+        debugfs_base = "/sys/kernel/debug"
+        if not os.path.ismount(debugfs_base):
             try:
-                logger.info("Trying to load ec_sys kernel module with write_support=1...")
-                subprocess.run(["modprobe", "ec_sys", "write_support=1"], capture_output=True, timeout=5)
+                subprocess.run(["mount", "-t", "debugfs", "none", debugfs_base],
+                               capture_output=True, timeout=5)
+                logger.info("Mounted debugfs at %s", debugfs_base)
             except Exception as e:
-                logger.debug("modprobe ec_sys failed: %s", e)
-                
-            if not os.path.exists(EC_PATH):
-                if os.path.exists("/sys/kernel/security/lockdown"):
-                    try:
-                        with open("/sys/kernel/security/lockdown") as f:
-                            ld = f.read().strip()
-                            if "[integrity]" in ld or "[confidentiality]" in ld:
-                                logger.warning("EC fallback unavailable: Kernel lockdown is active, likely due to Secure Boot. ec_sys write_support is blocked.")
-                    except Exception:
-                        pass
+                logger.debug("Could not mount debugfs: %s", e)
+
+        try:
+            logger.info("Trying to load ec_sys kernel module with write_support=1...")
+            subprocess.run(["modprobe", "ec_sys", "write_support=1"], capture_output=True, timeout=5)
+        except Exception as e:
+            logger.debug("modprobe ec_sys failed: %s", e)
+
+        if not os.path.exists(EC_PATH):
+            if os.path.exists("/sys/kernel/security/lockdown"):
+                try:
+                    with open("/sys/kernel/security/lockdown") as f:
+                        ld = f.read().strip()
+                        if "[integrity]" in ld or "[confidentiality]" in ld:
+                            logger.warning(
+                                "EC fallback unavailable: Kernel lockdown is active, "
+                                "likely due to Secure Boot. ec_sys write_support is blocked."
+                            )
+                except Exception:
+                    pass
+
+    def try_lazy_ec_load(self) -> bool:
+        """Attempt a fresh ec_sys load at runtime and refresh has_ec_access.
+
+        Called by fan_service when EC is needed but was not available at boot
+        (e.g. ec_sys not installed yet, but user added it later).
+        Returns True if EC access is now available.
+        """
+        if self.has_ec_access:
+            return True
+        if self.is_unsafe_ec_model and not self.needs_ec_fallback:
+            return False
+        self._ensure_ec_sys()
+        self.has_ec_access = os.path.exists(EC_PATH)
+        if self.has_ec_access:
+            logger.info("Lazy EC load succeeded for board %s", self.board_id)
+        return self.has_ec_access
 
     def read_byte(self, reg: int) -> int:
         """Read a single byte from the EC register."""

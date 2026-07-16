@@ -139,10 +139,23 @@ class FanController:
         self.mode = "auto"
 
     def supports_custom_mode(self):
+        """Return True if this board can run a custom fan curve.
+
+        Accepts three sources:
+        1. hwmon fan1_target or pwm1 present (kernel-level control)
+        2. EC access already established (ec_sys loaded)
+        3. Capability DB says EC fan control is supported — ec_sys may be
+           loaded later on demand, so we optimistically report True here.
+        """
         if self.hwmon_path:
             if sysfs_exists(os.path.join(self.hwmon_path, "fan1_target")) or sysfs_exists(os.path.join(self.hwmon_path, "pwm1")):
                 return True
         if self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
+            return True
+        # EC capable but ec_sys not yet loaded — still advertise support so
+        # the GUI shows the custom curve UI.  The controller will attempt to
+        # load ec_sys when the first target write arrives.
+        if self.ec.capabilities.supports_fan_control_ec and not self.ec.is_unsafe_ec_model:
             return True
         return False
 
@@ -254,6 +267,14 @@ class FanController:
             self.mode = mode
             self._last_targets.clear()
             logger.info("Fan mode set to %s", mode)
+
+            # When switching back to auto, release any outstanding fan targets
+            # so the firmware can fully resume its own fan curve.
+            if mode == "auto" and self.hwmon_path:
+                for i in self.found_fans:
+                    t_path = os.path.join(self.hwmon_path, f"fan{i}_target")
+                    if sysfs_exists(t_path):
+                        sysfs_write(t_path, 0)
         else:
             logger.warning("Failed to set fan mode to %s (all paths failed)", mode)
         return ok
@@ -281,11 +302,18 @@ class FanController:
             ok = sysfs_write(path, rpm)
         elif self._has_pwm_fallback():
             ok = self._set_pwm_fallback_target(fan_num, rpm)
-        elif self.ec.has_ec_access and not self.ec.is_unsafe_ec_model:
-            max_rpm = self.get_max_speed(fan_num)
-            pct = int(round(rpm * 100.0 / max_rpm))
-            logger.info("Using direct EC write for fan %d target (%d%%)", fan_num, pct)
-            ok = self.ec.set_fan_speed_pct(fan_num, pct)
+        elif self.ec.capabilities.supports_fan_control_ec and not self.ec.is_unsafe_ec_model:
+            # EC may not have been available at boot — try a lazy load now.
+            if not self.ec.has_ec_access:
+                self.ec.try_lazy_ec_load()
+            if self.ec.has_ec_access:
+                max_rpm = self.get_max_speed(fan_num)
+                pct = int(round(rpm * 100.0 / max_rpm))
+                logger.info("Using direct EC write for fan %d target (%d%%)", fan_num, pct)
+                ok = self.ec.set_fan_speed_pct(fan_num, pct)
+            else:
+                logger.debug("EC lazy load failed for fan%d target", fan_num)
+                return False
         else:
             logger.debug(
                 "No fan%d_target, pwm1 fallback, or EC access available",
@@ -415,22 +443,36 @@ class FanService:
 
     def _get_max_temp(self):
         """Read the highest CPU/GPU temperature using the standard hwmon controller.
-        
-        This avoids reacting to erratic single-core temperature spikes or buggy
-        phantom WMI sensors, ensuring consistency with the UI's temperature readings.
+
+        Explicitly excludes the HP WMI hwmon node (driver name \"hp\") from CPU
+        sensing — that driver is primarily for fans/power and its temperature
+        registers routinely return -273\u00b0C (0 Kelvin BIOS phantom).  Real CPU
+        temperature is read from coretemp / k10temp / zenpower instead.
         """
         if not hasattr(self, '_hwmon'):
             from common.hwmon_controller import LinuxHwMonController
             self._hwmon = LinuxHwMonController()
-            
+
         cpu_temp = self._hwmon.get_cpu_temperature() or 0.0
         gpu_temp = self._hwmon.get_gpu_temperature() or 0.0
-        
+
+        # Sanity-check: hwmon_controller already filters -273\u00b0C but add an
+        # extra guard so a future regression can't trigger thermal protection.
+        if cpu_temp < 0 or cpu_temp > 115.0:
+            cpu_temp = 0.0
+        if gpu_temp < 0 or gpu_temp > 115.0:
+            gpu_temp = 0.0
+
         # Fallback to EC if both hwmon sensors fail and EC is available
         if cpu_temp == 0.0 and gpu_temp == 0.0 and self._fan.ec.has_ec_access and not self._fan.ec.is_unsafe_ec_model:
-            cpu_temp = self._fan.ec.get_cpu_temp() or 0.0
-            gpu_temp = self._fan.ec.get_gpu_temp() or 0.0
-            
+            ec_cpu = self._fan.ec.get_cpu_temp() or 0.0
+            ec_gpu = self._fan.ec.get_gpu_temp() or 0.0
+            # EC also sometimes returns 0 on boot; only trust values in range
+            if 1.0 <= ec_cpu <= 115.0:
+                cpu_temp = ec_cpu
+            if 1.0 <= ec_gpu <= 115.0:
+                gpu_temp = ec_gpu
+
         max_temp = max(cpu_temp, gpu_temp)
         return max_temp if max_temp > 0 else 45.0
 

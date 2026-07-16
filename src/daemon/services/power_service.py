@@ -229,20 +229,43 @@ class PowerProfileController:
         if not self.available:
             return False
         try:
+            ok = False
             if self.mode == "ppd":
                 if shutil.which("powerprofilesctl"):
                     try:
                         res = subprocess.run(["powerprofilesctl", "set", profile], capture_output=True, text=True, timeout=2.0)
                         if res.returncode == 0:
                             logger.info("Successfully set ppd profile via powerprofilesctl: %s", profile)
+                            ok = True
                         else:
                             logger.warning("powerprofilesctl set returned non-zero: %s (stderr: %s), falling back to direct dbus", res.returncode, res.stderr)
-                            self.proxy.ActiveProfile = profile
+                            try:
+                                self.proxy.ActiveProfile = profile
+                                ok = True
+                            except Exception as dbus_err:
+                                logger.warning("Direct D-Bus set also failed: %s", dbus_err)
                     except Exception as e:
                         logger.warning("Failed to run powerprofilesctl set: %s, falling back to direct dbus", e)
-                        self.proxy.ActiveProfile = profile
+                        try:
+                            self.proxy.ActiveProfile = profile
+                            ok = True
+                        except Exception as dbus_err:
+                            logger.warning("Direct D-Bus set also failed: %s", dbus_err)
                 else:
-                    self.proxy.ActiveProfile = profile
+                    try:
+                        self.proxy.ActiveProfile = profile
+                        ok = True
+                    except Exception as e:
+                        logger.warning("PPD D-Bus set failed: %s", e)
+
+                # If PPD failed (e.g. AMD pstate boost error), fall back to
+                # direct sysfs / OMEN WMI so the platform profile is still set.
+                if not ok:
+                    logger.info("PPD backend failed for '%s', attempting omen_direct sysfs fallback", profile)
+                    if self._sync_omen_profile(profile):
+                        ok = True
+                        logger.info("omen_direct sysfs fallback succeeded for '%s'", profile)
+
             elif self.mode == "tuned":
                 mapping = {
                     "power-saver": "powersave",
@@ -250,6 +273,7 @@ class PowerProfileController:
                     "performance": "throughput-performance",
                 }
                 self.proxy.switch_profile(mapping.get(profile, "balanced"))
+                ok = True
             elif self.mode == "omen_direct":
                 if not self._sync_omen_profile(profile):
                     return False
@@ -258,10 +282,11 @@ class PowerProfileController:
                 ).start()
                 return True
 
-            threading.Thread(
-                target=self._sync_hardware_power, args=(profile,), daemon=True
-            ).start()
-            return True
+            if ok:
+                threading.Thread(
+                    target=self._sync_hardware_power, args=(profile,), daemon=True
+                ).start()
+            return ok
         except Exception as e:
             logger.error("Power profile set error (%s): %s", self.mode, e)
             return False
@@ -424,9 +449,16 @@ class PowerService:
 
     def _delayed_profile_restore(self, _retry=0):
         """Restore saved power profile with retry.
-        
+
         Called 3 seconds after daemon start so PPD/tuned has time to
         initialise.  Retries once after 5 more seconds on failure.
+
+        Guard against the "performance revert loop": when PPD has trouble
+        writing profiles (e.g. AMD pstate boost error), the platform_profile
+        sysfs node may still read \"performance\" from the previous boot even
+        after the user selected \"balanced\".  We trust OUR saved config as
+        the source of truth, and only skip the write if the hardware already
+        agrees AND PPD also agrees.
         """
         saved = self._config.get("power_profile", "balanced")
         if saved not in self._ctrl.get_profiles():
@@ -440,8 +472,24 @@ class PowerService:
             self._ctrl._sync_hardware_power(saved)
             return
 
+        logger.info(
+            "Restoring power profile '%s' (hardware reports '%s', attempt=%d)",
+            saved, current, _retry + 1
+        )
         ok = self._ctrl.set_profile(saved)
-        logger.info("Delayed restore of power profile '%s' (success=%s, attempt=%d)", saved, ok, _retry + 1)
+
+        # Verify the write actually stuck by re-reading after a short settle
+        if ok:
+            time.sleep(0.5)
+            after = self._ctrl.get_active()
+            if after != saved:
+                logger.warning(
+                    "Profile restore wrote '%s' but hardware reads '%s' — "
+                    "possible PPD conflict. Will retry.", saved, after
+                )
+                ok = False
+
+        logger.info("Delayed restore of power profile '%s' (success=%s)", saved, ok)
 
         if not ok and _retry < 1:
             logger.info("Profile restore failed, scheduling retry in 5 seconds...")
@@ -637,10 +685,34 @@ class PowerService:
         return "OK"
 
     def SetPowerLimits(self, enabled, pl1, pl2):
-        logger.info("SetPowerLimits: enabled=%s, pl1=%d, pl2=%d", enabled, pl1, pl2)
+        # Validate and clamp power limits to safe hardware ranges.
+        # pl1 = sustained / STAPM (1–200 W), pl2 = peak / fast (1–250 W).
+        # Rejecting out-of-range values prevents accidental or malicious
+        # destruction of hardware via the D-Bus interface.
+        try:
+            pl1 = int(pl1)
+            pl2 = int(pl2)
+        except (ValueError, TypeError):
+            logger.warning("SetPowerLimits: non-integer values pl1=%s pl2=%s", pl1, pl2)
+            return "FAIL"
+
+        PL1_MIN, PL1_MAX = 1, 200   # sustained TDP range (Watts)
+        PL2_MIN, PL2_MAX = 1, 250   # peak / fast TDP range (Watts)
+
+        if not (PL1_MIN <= pl1 <= PL1_MAX):
+            logger.warning("SetPowerLimits: pl1=%d out of safe range [%d, %d]", pl1, PL1_MIN, PL1_MAX)
+            return "FAIL"
+        if not (PL2_MIN <= pl2 <= PL2_MAX):
+            logger.warning("SetPowerLimits: pl2=%d out of safe range [%d, %d]", pl2, PL2_MIN, PL2_MAX)
+            return "FAIL"
+        if pl2 < pl1:
+            logger.warning("SetPowerLimits: pl2 (%d) < pl1 (%d), clamping pl2 to pl1", pl2, pl1)
+            pl2 = pl1
+
+        logger.info("SetPowerLimits: enabled=%s, pl1=%dW, pl2=%dW", enabled, pl1, pl2)
         self._config.set("pl_enabled", bool(enabled))
-        self._config.set("pl1_w", int(pl1))
-        self._config.set("pl2_w", int(pl2))
+        self._config.set("pl1_w", pl1)
+        self._config.set("pl2_w", pl2)
         self._config.save()
         if not enabled:
             return "OK"
@@ -648,19 +720,20 @@ class PowerService:
             if is_amd_cpu():
                 ryzen_bin = "/usr/libexec/hp-manager/ryzenadj"
                 if os.path.exists(ryzen_bin):
-                    subprocess.run([ryzen_bin, f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+                    subprocess.run([ryzen_bin, f"--stapm-limit={pl1*1000}", f"--fast-limit={pl2*1000}", f"--slow-limit={pl1*1000}"], capture_output=True)
                 elif shutil.which("ryzenadj"):
-                    subprocess.run(["ryzenadj", f"--stapm-limit={int(pl1)*1000}", f"--fast-limit={int(pl2)*1000}", f"--slow-limit={int(pl1)*1000}"], capture_output=True)
+                    subprocess.run(["ryzenadj", f"--stapm-limit={pl1*1000}", f"--fast-limit={pl2*1000}", f"--slow-limit={pl1*1000}"], capture_output=True)
             else:
                 rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw"
                 rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw"
                 if sysfs_exists(rapl1):
-                    sysfs_write(rapl1, int(pl1) * 1000000)
+                    sysfs_write(rapl1, pl1 * 1_000_000)
                 if sysfs_exists(rapl2):
-                    sysfs_write(rapl2, int(pl2) * 1000000)
+                    sysfs_write(rapl2, pl2 * 1_000_000)
         except Exception as e:
             logger.debug("Failed to apply power limits: %s", e)
         return "OK"
+
 
     def SetAppProfilesEnabled(self, enabled):
         logger.info("SetAppProfilesEnabled: %s", enabled)

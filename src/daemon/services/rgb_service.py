@@ -25,10 +25,25 @@ DRIVER_PATH_NEW = "/sys/devices/platform/omen-rgb-keyboard/rgb_zones"
 DRIVER_PATH_CUSTOM = "/sys/devices/platform/hp-rgb-lighting"
 HEX_COLOR_RE = re.compile(r"^[0-9A-F]{6}$")
 
-# We accept the modes provided by omen-rgb-keyboard-main, and map GUI names if needed.
-# The GUI currently sends: "static", "breathing", "wave", "cycle". 
-# The driver supports: static, breathing, rainbow, wave, pulse, chase, sparkle, candle, aurora, disco, gradient
-# We map "cycle" to "rainbow" as it's the closest driver native mode.
+# Driver capability notes:
+#
+# omen-rgb-keyboard (new driver)
+#   sysfs: /sys/devices/platform/omen-rgb-keyboard/rgb_zones/zone00 … zone07
+#   brightness: 0-100  animation_mode / animation_speed supported
+#   is_new_driver = True
+#
+# hp-rgb-lighting (custom driver by yunusemreyl)
+#   sysfs: /sys/devices/platform/hp-rgb-lighting/zone0 … zone7
+#   brightness: "1" (on, writes 0xE4 to WMI) / "0" (off, writes 0x64)
+#   no animation_mode; static zone colours only
+#   supports up to 8 zones (zone0-zone7)
+#   is_new_driver = False
+#
+# hp-omen (hp-omen-linux-module, old community driver)
+#   sysfs: /sys/devices/platform/hp-wmi/rgb_zones/zone00 … zone03
+#   brightness: not present; only 4 zones; no animation
+#   is_new_driver = False (treated same as hp-rgb-lighting fallback)
+
 VALID_LIGHT_MODES = {"static", "breathing", "wave", "cycle", "rainbow", "pulse", "chase", "sparkle", "candle", "aurora", "disco", "gradient"}
 VALID_DIRECTIONS = {"ltr", "rtl"}
 
@@ -40,6 +55,22 @@ class RGBController:
         self.available = self.driver_path is not None
         self.is_new_driver = self.available and "omen-rgb-keyboard" in self.driver_path
         self.unsupported = not self.available
+        # Determine actual zone count supported by the driver
+        self.zone_count = self._detect_zone_count()
+
+    def _detect_zone_count(self):
+        """Return the number of writable zones this driver exposes."""
+        if not self.available:
+            return 0
+        if self.is_new_driver:
+            # omen-rgb-keyboard always exposes zone00..zone07
+            return 8
+        # hp-rgb-lighting: probe for zone4 to distinguish 8-zone from 4-zone
+        zone4 = os.path.join(self.driver_path, "zone4")
+        zone4_new = os.path.join(self.driver_path, "zone04")
+        if os.path.exists(zone4) or os.path.exists(zone4_new):
+            return 8
+        return 4
 
     def _find_rgb_path(self):
         if os.path.exists(DRIVER_PATH_NEW):
@@ -49,19 +80,40 @@ class RGBController:
             logger.info("RGB: Using custom driver path %s", DRIVER_PATH_CUSTOM)
             return DRIVER_PATH_CUSTOM
 
-        try:
-            for candidate in (
-                "/sys/devices/platform/hp-rgb-lighting",
-                "/sys/devices/platform/hp_rgb_lighting",
-            ):
-                if os.path.exists(candidate):
-                    logger.info("RGB: Found loaded module at %s", candidate)
-                    return candidate
-        except Exception:
-            pass
+        for candidate in (
+            "/sys/devices/platform/hp-rgb-lighting",
+            "/sys/devices/platform/hp_rgb_lighting",
+        ):
+            if os.path.exists(candidate):
+                logger.info("RGB: Found loaded module at %s", candidate)
+                return candidate
 
-        logger.info("RGB: No RGB control path found")
+        # Neither driver path exists — try loading the modules.
+        self._try_load_rgb_drivers()
+
+        # Re-check after modprobe
+        for check in (DRIVER_PATH_NEW, DRIVER_PATH_CUSTOM,
+                      "/sys/devices/platform/hp-rgb-lighting",
+                      "/sys/devices/platform/hp_rgb_lighting"):
+            if os.path.exists(check):
+                logger.info("RGB: Driver path available after modprobe: %s", check)
+                return check
+
+        logger.info("RGB: No RGB control path found (hp_rgb_lighting / omen-rgb-keyboard not loaded)")
         return None
+
+    @staticmethod
+    def _try_load_rgb_drivers():
+        """Attempt to load known HP/OMEN RGB kernel modules."""
+        import subprocess as _sp
+        for mod in ("omen-rgb-keyboard", "hp_rgb_lighting", "hp-rgb-lighting"):
+            try:
+                result = _sp.run(["modprobe", mod], capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    logger.info("RGB: Loaded kernel module '%s'", mod)
+                    return  # One driver is enough
+            except Exception as e:
+                logger.debug("RGB: modprobe %s failed: %s", mod, e)
 
     def is_available(self):
         return self.available
@@ -82,9 +134,10 @@ class RGBController:
             logger.error(f"Failed to write zone {zone}: {e}")
 
     def write_all(self, hex_color):
+        """Write hex_color to all available zones."""
         if not self.available:
             return
-            
+
         if self.is_new_driver:
             try:
                 with open(f"{self.driver_path}/all", "w") as f:
@@ -92,7 +145,8 @@ class RGBController:
             except Exception as e:
                 logger.error(f"Failed to write all zones: {e}")
         else:
-            for i in range(4):
+            # hp-rgb-lighting supports zone_count zones (4 or 8)
+            for i in range(self.zone_count):
                 self.write_zone(i, hex_color)
 
     def write_brightness(self, value_or_bool):
@@ -219,28 +273,36 @@ class RGBService:
     def _apply_current_state(self):
         if not self._rgb.is_available():
             return
-            
+
         power = self._config.get("power", True)
         if not power:
             self._rgb.write_brightness(0)
             return
-            
+
         mode = self._config.get("mode", "static")
         speed = self._config.get("speed", 50)
         brightness = self._config.get("brightness", 100)
         colors = self._config.get("colors", ["FF0000"] * 8)
-        
+
         if self._rgb.is_new_driver:
             self._rgb.write_brightness(brightness)
+            # Always set the mode first — the driver may reset zone colours
+            # when the mode changes, so writing colours *after* mode commit
+            # ensures they are not overwritten by the driver's defaults.
+            self._rgb.write_mode(mode, speed)
             if mode == "static":
                 for i in range(4):
                     self._rgb.write_zone(i, colors[i])
-            self._rgb.write_mode(mode, speed)
         else:
-            # Fallback for old driver without software animation engine (just static support)
+            # hp-rgb-lighting (custom driver): supports zone_count zones (4 or 8).
+            # No animation modes — static colour only; brightness is binary on/off.
             self._rgb.write_brightness(True)
-            for i in range(4):
-                self._rgb.write_zone(i, colors[i])
+            zone_count = self._rgb.zone_count
+            for i in range(zone_count):
+                # Extend colors list if fewer colors than zones are stored
+                color = colors[i] if i < len(colors) else colors[0]
+                self._rgb.write_zone(i, color)
+
 
     # ── D-Bus methods ─────────────────────────────────────────────────
 
@@ -287,6 +349,15 @@ class RGBService:
     def GetState(self):
         snap = self._config.snapshot()
         snap["unsupported"] = getattr(self._rgb, "unsupported", False)
+        snap["driver_active"] = self._rgb.available
+        snap["driver_path"] = self._rgb.driver_path or ""
+        snap["is_new_driver"] = getattr(self._rgb, "is_new_driver", False)
+        if not self._rgb.available:
+            snap["unavailable_reason"] = (
+                "RGB kernel module not loaded. Install 'hp_rgb_lighting' or "
+                "'omen-rgb-keyboard' and ensure it loads at boot "
+                "(e.g. add to /etc/modules-load.d/)."
+            )
         return json.dumps(snap)
 
     def SetWinLock(self, locked):

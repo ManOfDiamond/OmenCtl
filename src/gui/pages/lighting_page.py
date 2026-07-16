@@ -98,6 +98,20 @@ class LightingPage(Gtk.Box):
 
     def _apply_state(self, st):
         try:
+            # If the daemon reports the RGB driver is not available, show a
+            # clear banner and disable controls — avoids a silent no-op UI.
+            driver_active = st.get("driver_active", not st.get("unsupported", False))
+            if not driver_active:
+                reason = st.get(
+                    "unavailable_reason",
+                    T("rgb_driver_unavailable") if hasattr(self, "_rgb_unavail_banner") else
+                    "RGB kernel module not loaded (hp_rgb_lighting / omen-rgb-keyboard)."
+                )
+                self._show_unavailable_banner(reason)
+                return
+
+            self._hide_unavailable_banner()
+
             self.power = st.get("power", True)
             self.mode = st.get("mode", "static")
             self.speed = st.get("speed", 50)
@@ -127,8 +141,38 @@ class LightingPage(Gtk.Box):
             self.kb_preview.brightness = self.brightness
             self.kb_preview.direction = self.direction
             self.kb_preview.queue_draw()
-        except Exception: pass
+        except Exception:
+            pass
         return False
+
+    def _show_unavailable_banner(self, reason):
+        if hasattr(self, "_rgb_unavail_banner") and self._rgb_unavail_banner is not None:
+            self._rgb_unavail_label.set_text(reason)
+            return
+        banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        banner.add_css_class("card")
+        icon = Gtk.Label(label="⚠")
+        icon.add_css_class("section-title")
+        banner.append(icon)
+        lbl = Gtk.Label(label=reason, wrap=True, xalign=0)
+        lbl.add_css_class("stat-lbl")
+        banner.append(lbl)
+        self._rgb_unavail_banner = banner
+        self._rgb_unavail_label = lbl
+        self._content_box.prepend(banner)
+        # Dim the controls to signal they are non-functional
+        self._controls_card.set_sensitive(False)
+        self._controls_card.set_opacity(0.4)
+
+    def _hide_unavailable_banner(self):
+        if hasattr(self, "_rgb_unavail_banner") and self._rgb_unavail_banner is not None:
+            self._content_box.remove(self._rgb_unavail_banner)
+            self._rgb_unavail_banner = None
+            self._rgb_unavail_label = None
+        self._controls_card.set_sensitive(True)
+        self._controls_card.set_opacity(1.0)
+
+
 
     def _build_ui(self):
         title = Gtk.Label(label=T("keyboard_lighting"), xalign=0)
