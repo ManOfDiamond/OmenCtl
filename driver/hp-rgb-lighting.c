@@ -49,141 +49,8 @@ enum hp_wmi_backlight_commandtype {
   HPWMI_BRIGHTNESS_SET_QUERY = 0x05,
 };
 
-/* ── BIOS communication structures ── */
-struct bios_args {
-  u32 signature;
-  u32 command;
-  u32 commandtype;
-  u32 datasize;
-  u8 data[];
-};
-
-struct bios_return {
-  u32 sigpass;
-  u32 return_code;
-};
-
-/* ── WMI query helper ── */
-static inline int encode_outsize_for_pvsz(int outsize) {
-  if (outsize > 4096)
-    return -EINVAL;
-  if (outsize > 1024)
-    return 5;
-  if (outsize > 128)
-    return 4;
-  if (outsize > 4)
-    return 3;
-  if (outsize > 0)
-    return 2;
-  return 1;
-}
-
-/*
- * hp-wmi exports hp_wmi_mutex via EXPORT_SYMBOL_GPL for companion drivers.
- *
- * IMPORTANT: We cannot use __attribute__((weak)) for a kernel struct mutex
- * because a weak symbol that resolves to BSS zero gives us an UNINITIALIZED
- * mutex — mutex_lock() on it is undefined behaviour and may cause a panic.
- *
- * Instead we use symbol_get() at runtime to check whether hp-wmi has exported
- * the symbol.  symbol_get() returns NULL if the symbol is not present, so we
- * fall back to our own initialized local mutex in that case.
- *
- * We cache the result after the first call; it is safe to call symbol_get()
- * from module init context.
- */
-#include <linux/module.h>  /* symbol_get / symbol_put */
-
-static DEFINE_MUTEX(_local_rgb_mutex);
-static struct mutex *_cached_wmi_mutex = NULL;
-static bool _wmi_mutex_resolved = false;
-
-static struct mutex *_get_wmi_mutex(void)
-{
-	if (!_wmi_mutex_resolved) {
-		/* symbol_get() increments refcount; we hold it for the driver lifetime */
-		struct mutex *m = (struct mutex *)symbol_get(hp_wmi_mutex);
-		_cached_wmi_mutex = m; /* NULL when hp-wmi not loaded */
-		_wmi_mutex_resolved = true;
-	}
-	return _cached_wmi_mutex ? _cached_wmi_mutex : &_local_rgb_mutex;
-}
-
-static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
-                                void *buffer, int insize, int outsize) {
-  struct acpi_buffer input, output = {ACPI_ALLOCATE_BUFFER, NULL};
-  struct bios_return *bios_return;
-  union acpi_object *obj = NULL;
-  struct bios_args *args = NULL;
-  int mid, actual_insize, actual_outsize;
-  size_t bios_args_size;
-  int ret;
-
-  mid = encode_outsize_for_pvsz(outsize);
-  if (WARN_ON(mid < 0))
-    return mid;
-
-  actual_insize = max(insize, 128);
-  bios_args_size = struct_size(args, data, actual_insize);
-  args = kzalloc(bios_args_size, GFP_KERNEL);
-  if (!args)
-    return -ENOMEM;
-
-  input.length = bios_args_size;
-  input.pointer = args;
-
-  args->signature = 0x55434553;
-  args->command = command;
-  args->commandtype = query;
-  args->datasize = insize;
-  memcpy(args->data, buffer, flex_array_size(args, data, insize));
-
-  mutex_lock(_get_wmi_mutex());
-  ret = wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
-  mutex_unlock(_get_wmi_mutex());
-  if (ret)
-    goto out_free;
-
-  obj = output.pointer;
-  if (!obj) {
-    ret = -EINVAL;
-    goto out_free;
-  }
-
-  if (obj->type != ACPI_TYPE_BUFFER) {
-    pr_warn("query 0x%x returned an invalid object type 0x%x\n",
-            query, obj->type);
-    ret = -EINVAL;
-    goto out_free;
-  }
-
-  /* Validate buffer before any dereference */
-  if (!obj->buffer.pointer ||
-      obj->buffer.length < sizeof(*bios_return)) {
-    pr_warn("query 0x%x returned invalid buffer (ptr=%p len=%u)\n",
-            query, obj->buffer.pointer, obj->buffer.length);
-    ret = -EINVAL;
-    goto out_free;
-  }
-
-  bios_return = (struct bios_return *)obj->buffer.pointer;
-  ret = bios_return->return_code;
-  if (ret)
-    goto out_free;
-
-  if (!outsize)
-    goto out_free;
-
-  actual_outsize =
-      min(outsize, (int)(obj->buffer.length - sizeof(*bios_return)));
-  memcpy(buffer, obj->buffer.pointer + sizeof(*bios_return), actual_outsize);
-  memset(buffer + actual_outsize, 0, outsize - actual_outsize);
-
-out_free:
-  kfree(obj);
-  kfree(args);
-  return ret;
-}
+extern int hp_wmi_perform_query(int query, enum hp_wmi_command command,
+                                void *buffer, int insize, int outsize);
 
 /* ══════════════════════════════════════════════════════════════════
  * RGB ZONE SYSFS  (zone0 … zone7)
@@ -206,11 +73,9 @@ static ssize_t zone_show(struct device *dev, struct device_attribute *attr,
       zone >= RGB_ZONE_COUNT)
     return -EINVAL;
 
-  mutex_lock(_get_wmi_mutex());
   memset(tbl, 0, sizeof(tbl));
   ret = hp_wmi_perform_query(HPWMI_COLOR_GET_QUERY, HPWMI_BACKLIGHT, tbl,
                              sizeof(tbl), sizeof(tbl));
-  mutex_unlock(_get_wmi_mutex());
 
   if (ret)
     return -EIO;
@@ -240,13 +105,11 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
       return -EINVAL;
   }
 
-  mutex_lock(_get_wmi_mutex());
   memset(tbl, 0, sizeof(tbl));
   ret = hp_wmi_perform_query(HPWMI_COLOR_GET_QUERY, HPWMI_BACKLIGHT, tbl,
                              sizeof(tbl), sizeof(tbl));
   if (ret) {
     pr_warn("hp-rgb-lighting: zone%d color GET failed: WMI returned %d\n", zone, ret);
-    mutex_unlock(_get_wmi_mutex());
     return -EIO;
   }
 
@@ -259,8 +122,6 @@ static ssize_t zone_store(struct device *dev, struct device_attribute *attr,
   if (ret)
     pr_warn("hp-rgb-lighting: zone%d color SET failed: WMI returned %d\n", zone, ret);
 
-  mutex_unlock(_get_wmi_mutex());
-
   return ret ? -EIO : count;
 }
 
@@ -270,10 +131,8 @@ static ssize_t brightness_show(struct device *dev,
   u32 data = 0;
   int ret;
 
-  mutex_lock(_get_wmi_mutex());
   ret = hp_wmi_perform_query(HPWMI_BRIGHTNESS_GET_QUERY, HPWMI_BACKLIGHT, &data,
                        sizeof(data), sizeof(data));
-  mutex_unlock(_get_wmi_mutex());
   
   pr_debug("hp-rgb-lighting: brightness_show: query returned %d, data 0x%08X\n", ret, data);
 
@@ -298,10 +157,8 @@ static ssize_t brightness_store(struct device *dev,
 
   data = val ? 0xE4 : 0x64;
   
-  mutex_lock(_get_wmi_mutex());
   ret = hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
                        sizeof(data), 0);
-  mutex_unlock(_get_wmi_mutex());
   
   pr_debug("hp-rgb-lighting: brightness_store(val=%d, data=0x%08X): query returned %d\n", val, data, ret);
 
@@ -319,10 +176,8 @@ static ssize_t win_lock_show(struct device *dev,
    * We use it as the `command` arg and 0 as the commandtype (read).
    * This matches how the BIOS gaming-key register is accessed.
    */
-  mutex_lock(_get_wmi_mutex());
   ret = hp_wmi_perform_query(0 /* commandtype */, HPWMI_GAMING_KEY, &data,
                        sizeof(data), sizeof(data));
-  mutex_unlock(_get_wmi_mutex());
 
   if (ret)
     return ret;
@@ -344,10 +199,8 @@ static ssize_t win_lock_store(struct device *dev,
 
   data = val ? 0x01 : 0x00;
 
-  mutex_lock(_get_wmi_mutex());
   ret = hp_wmi_perform_query(0 /* commandtype */, HPWMI_GAMING_KEY, &data,
                        sizeof(data), 0);
-  mutex_unlock(_get_wmi_mutex());
 
   return ret ? ret : count;
 }
@@ -412,11 +265,7 @@ static void __exit hp_rgb_lighting_exit(void) {
   sysfs_remove_groups(&hp_rgb_lighting_pdev->dev.kobj, hp_rgb_lighting_groups);
   platform_device_unregister(hp_rgb_lighting_pdev);
 
-  /* Release the symbol reference acquired via symbol_get() in _get_wmi_mutex() */
-  if (_cached_wmi_mutex) {
-    symbol_put(hp_wmi_mutex);
-    _cached_wmi_mutex = NULL;
-  }
+
 
   pr_info("HP Omen/Victus RGB companion driver unloaded\n");
 }
