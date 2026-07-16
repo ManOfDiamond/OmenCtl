@@ -291,8 +291,9 @@ class RGBService:
             # ensures they are not overwritten by the driver's defaults.
             self._rgb.write_mode(mode, speed)
             if mode == "static":
-                for i in range(4):
-                    self._rgb.write_zone(i, colors[i])
+                for i in range(self._rgb.zone_count):
+                    color = colors[i] if i < len(colors) else colors[0]
+                    self._rgb.write_zone(i, color)
         else:
             # hp-rgb-lighting (custom driver): supports zone_count zones (4 or 8).
             # No animation modes — static colour only; brightness is binary on/off.

@@ -465,6 +465,7 @@ class PlatformService:
                             except (OSError, IOError):
                                 poller.unregister(dev.fd)
                                 del devices[dev.path]
+                                break  # stop iterating devices for this fd — device is gone
             except Exception as e:
                 logger.error(f"Macro listener error: {e}")
                 time.sleep(5)

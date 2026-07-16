@@ -570,8 +570,11 @@ class PowerService:
                             if f_info_raw:
                                 f_info = json.loads(f_info_raw)
                                 curr_fan = f_info.get("mode", "auto")
+                            else:
+                                # D-Bus call returned None → proxy is stale, reset it
+                                fan_proxy = None
                         except Exception:
-                            pass
+                            fan_proxy = None
                     
                     if self._active_app is None:
                         self._pre_app_state = (curr_power, curr_fan)
@@ -579,7 +582,9 @@ class PowerService:
                     logger.info("App Monitor: Detected '%s', switching power=%s, fan=%s", found_app, target_profile, target_fan)
                     self._ctrl.set_profile(target_profile)
                     if fan_proxy and target_fan in ("auto", "max"):
-                        _dbus_call(fan_proxy.SetFanMode, target_fan)
+                        result = _dbus_call(fan_proxy.SetFanMode, target_fan)
+                        if result is None:
+                            fan_proxy = None
                 else:
                     # App closed, restore previous state
                     self._restore_pre_app_state(fan_proxy)

@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/wmi.h>
 
 MODULE_AUTHOR("Yunus Emre <yunusemreyl>");
 MODULE_DESCRIPTION("HP Omen/Victus keyboard RGB companion driver");
@@ -49,7 +50,6 @@ enum hp_wmi_backlight_commandtype {
   HPWMI_BRIGHTNESS_SET_QUERY = 0x05,
 };
 
-#include <linux/wmi.h>
 
 /* ── WMI query structures and definitions (standalone) ── */
 struct bios_args {
@@ -160,7 +160,11 @@ static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
 	memcpy(buffer, obj->buffer.pointer + sizeof(*bios_return), outsize);
 
 out_free:
-	kfree(obj);
+	/* output.pointer is allocated by ACPI (ACPI_ALLOCATE_BUFFER); must
+	 * always be freed via kfree(output.pointer), NOT kfree(obj), because
+	 * obj may be NULL if we jumped here before the obj = output.pointer
+	 * assignment. */
+	kfree(output.pointer);
 	kfree(args);
 	return ret;
 }

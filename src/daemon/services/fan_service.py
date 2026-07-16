@@ -307,7 +307,7 @@ class FanController:
             if not self.ec.has_ec_access:
                 self.ec.try_lazy_ec_load()
             if self.ec.has_ec_access:
-                max_rpm = self.get_max_speed(fan_num)
+                max_rpm = self.get_max_speed(fan_num) or 6000
                 pct = int(round(rpm * 100.0 / max_rpm))
                 logger.info("Using direct EC write for fan %d target (%d%%)", fan_num, pct)
                 ok = self.ec.set_fan_speed_pct(fan_num, pct)
@@ -418,7 +418,17 @@ class FanService:
         self._config.load()
 
         self._cache_lock = threading.Lock()
-        self._fan_cache = {}
+        # Pre-populate cache so GetFanInfo never returns {} before the first
+        # monitor loop iteration completes (avoids GUI parse errors on startup).
+        self._fan_cache = {
+            "available": self._fan.is_available(),
+            "fan_count": self._fan.get_fan_count(),
+            "mode": self._config.get("fan_mode", "auto"),
+            "supports_custom": self._fan.supports_custom_mode(),
+            "custom_curve": self._config.get("custom_curve", "[]"),
+            "fans": {},
+            "thermal_protection": False,
+        }
         self._thermal_protection_active = False
         self._thermal_protection_entered_at = 0.0
         self._pre_protection_mode = None
@@ -502,7 +512,7 @@ class FanService:
             fans_stalled = False
             mode = self._fan.get_mode()
             if mode != "max" and temp > 75.0:
-                speeds = [self._fan.get_current_speed(i) for i in range(1, self._fan.get_fan_count() + 1)]
+                speeds = [self._fan.get_current_speed(i) for i in self._fan.found_fans]
                 if speeds and all(s < 100 for s in speeds):
                     fans_stalled = True
 
