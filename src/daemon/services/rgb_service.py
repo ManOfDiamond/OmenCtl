@@ -213,7 +213,7 @@ class RGBController:
 
 
 class RGBService:
-    \"\"\"
+    """
     <node>
       <interface name="com.yyl.hpmanager.rgb">
         <method name="SetColor"><arg type="i" name="z" direction="in"/><arg type="s" name="h" direction="in"/><arg type="s" name="resp" direction="out"/></method>
@@ -224,7 +224,7 @@ class RGBService:
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
-    \"\"\"
+    """
 
     def __init__(self):
         self._rgb = RGBController()
