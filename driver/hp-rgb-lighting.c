@@ -49,9 +49,121 @@ enum hp_wmi_backlight_commandtype {
   HPWMI_BRIGHTNESS_SET_QUERY = 0x05,
 };
 
-extern int hp_wmi_perform_query(int query, enum hp_wmi_command command,
-                                void *buffer, int insize, int outsize);
+#include <linux/wmi.h>
 
+/* ── WMI query structures and definitions (standalone) ── */
+struct bios_args {
+	u32 signature;
+	u32 command;
+	u32 commandtype;
+	u32 datasize;
+	u8  data[];
+};
+
+struct bios_return {
+	u32 sigpass;
+	u32 return_code;
+};
+
+static inline int encode_outsize_for_pvsz(int outsize)
+{
+	if (outsize > 4096)
+		return -EINVAL;
+	if (outsize > 1024)
+		return 5;
+	if (outsize > 128)
+		return 4;
+	if (outsize > 4)
+		return 3;
+	if (outsize > 0)
+		return 2;
+	return 1;
+}
+
+static DEFINE_MUTEX(hp_rgb_mutex);
+
+static int hp_wmi_perform_query(int query, enum hp_wmi_command command,
+				void *buffer, int insize, int outsize)
+{
+	struct acpi_buffer input, output = {ACPI_ALLOCATE_BUFFER, NULL};
+	struct bios_return *bios_return;
+	union acpi_object *obj = NULL;
+	struct bios_args *args = NULL;
+	int mid, actual_insize;
+	size_t bios_args_size;
+	int ret;
+
+	mid = encode_outsize_for_pvsz(outsize);
+	if (WARN_ON(mid < 0))
+		return mid;
+
+	actual_insize = max(insize, 128);
+	bios_args_size = struct_size(args, data, actual_insize);
+	args = kzalloc(bios_args_size, GFP_KERNEL);
+	if (!args)
+		return -ENOMEM;
+
+	input.length  = bios_args_size;
+	input.pointer = args;
+
+	args->signature   = 0x55434553;
+	args->command     = command;
+	args->commandtype = query;
+	args->datasize    = insize == 0 ? 4 : insize;
+
+	if (insize > 0)
+		memcpy(args->data, buffer, flex_array_size(args, data, insize));
+
+	mutex_lock(&hp_rgb_mutex);
+	ret = wmi_evaluate_method(HPWMI_BIOS_GUID, 0, mid, &input, &output);
+	mutex_unlock(&hp_rgb_mutex);
+	if (ret)
+		goto out_free;
+
+	obj = output.pointer;
+	if (!obj) {
+		ret = -EINVAL;
+		goto out_free;
+	}
+
+	if (obj->type != ACPI_TYPE_BUFFER) {
+		pr_warn("query 0x%x returned an invalid object type 0x%x\n",
+			query, obj->type);
+		ret = -EINVAL;
+		goto out_free;
+	}
+
+	if (!obj->buffer.pointer ||
+	    obj->buffer.length < sizeof(*bios_return)) {
+		pr_warn("query 0x%x returned invalid buffer\n", query);
+		ret = -EINVAL;
+		goto out_free;
+	}
+
+	bios_return = (struct bios_return *)obj->buffer.pointer;
+	ret = bios_return->return_code;
+
+	if (ret) {
+		pr_warn("query 0x%x returned error 0x%x\n", query, ret);
+		goto out_free;
+	}
+
+	if (!outsize)
+		goto out_free;
+
+	if (outsize > obj->buffer.length - sizeof(*bios_return)) {
+		pr_warn("query 0x%x returned buffer too small\n", query);
+		ret = -EINVAL;
+		goto out_free;
+	}
+
+	memcpy(buffer, obj->buffer.pointer + sizeof(*bios_return), outsize);
+
+out_free:
+	kfree(obj);
+	kfree(args);
+	return ret;
+}
 /* ══════════════════════════════════════════════════════════════════
  * RGB ZONE SYSFS  (zone0 … zone7)
  * echo "FF0000" > /sys/devices/platform/hp-rgb-lighting/zone0
