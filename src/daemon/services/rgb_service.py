@@ -11,6 +11,8 @@ import re
 import sys
 import threading
 import time
+import math
+import random
 import typing
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,25 +27,6 @@ DRIVER_PATH_NEW = "/sys/devices/platform/omen-rgb-keyboard/rgb_zones"
 DRIVER_PATH_CUSTOM = "/sys/devices/platform/hp-rgb-lighting"
 HEX_COLOR_RE = re.compile(r"^[0-9A-F]{6}$")
 
-# Driver capability notes:
-#
-# omen-rgb-keyboard (new driver)
-#   sysfs: /sys/devices/platform/omen-rgb-keyboard/rgb_zones/zone00 … zone07
-#   brightness: 0-100  animation_mode / animation_speed supported
-#   is_new_driver = True
-#
-# hp-rgb-lighting (custom driver by yunusemreyl)
-#   sysfs: /sys/devices/platform/hp-rgb-lighting/zone0 … zone7
-#   brightness: "1" (on, writes 0xE4 to WMI) / "0" (off, writes 0x64)
-#   no animation_mode; static zone colours only
-#   supports up to 8 zones (zone0-zone7)
-#   is_new_driver = False
-#
-# hp-omen (hp-omen-linux-module, old community driver)
-#   sysfs: /sys/devices/platform/hp-wmi/rgb_zones/zone00 … zone03
-#   brightness: not present; only 4 zones; no animation
-#   is_new_driver = False (treated same as hp-rgb-lighting fallback)
-
 VALID_LIGHT_MODES = {"static", "breathing", "wave", "cycle", "rainbow", "pulse", "chase", "sparkle", "candle", "aurora", "disco", "gradient"}
 VALID_DIRECTIONS = {"ltr", "rtl"}
 
@@ -55,17 +38,13 @@ class RGBController:
         self.available = self.driver_path is not None
         self.is_new_driver = self.available and "omen-rgb-keyboard" in self.driver_path
         self.unsupported = not self.available
-        # Determine actual zone count supported by the driver
         self.zone_count = self._detect_zone_count()
 
     def _detect_zone_count(self):
-        """Return the number of writable zones this driver exposes."""
         if not self.available:
             return 0
         if self.is_new_driver:
-            # omen-rgb-keyboard always exposes zone00..zone07
             return 8
-        # hp-rgb-lighting: probe for zone4 to distinguish 8-zone from 4-zone
         zone4 = os.path.join(self.driver_path, "zone4")
         zone4_new = os.path.join(self.driver_path, "zone04")
         if os.path.exists(zone4) or os.path.exists(zone4_new):
@@ -88,10 +67,8 @@ class RGBController:
                 logger.info("RGB: Found loaded module at %s", candidate)
                 return candidate
 
-        # Neither driver path exists — try loading the modules.
         self._try_load_rgb_drivers()
 
-        # Re-check after modprobe
         for check in (DRIVER_PATH_NEW, DRIVER_PATH_CUSTOM,
                       "/sys/devices/platform/hp-rgb-lighting",
                       "/sys/devices/platform/hp_rgb_lighting"):
@@ -104,14 +81,13 @@ class RGBController:
 
     @staticmethod
     def _try_load_rgb_drivers():
-        """Attempt to load known HP/OMEN RGB kernel modules."""
         import subprocess as _sp
         for mod in ("omen-rgb-keyboard", "hp_rgb_lighting", "hp-rgb-lighting"):
             try:
                 result = _sp.run(["modprobe", mod], capture_output=True, timeout=5)
                 if result.returncode == 0:
                     logger.info("RGB: Loaded kernel module '%s'", mod)
-                    return  # One driver is enough
+                    return
             except Exception as e:
                 logger.debug("RGB: modprobe %s failed: %s", mod, e)
 
@@ -121,7 +97,10 @@ class RGBController:
     def write_zone(self, zone, hex_color):
         if not self.available or not (0 <= zone <= 7):
             return
- 
+        
+        if 0 <= zone <= 3:
+            zone = 3 - zone
+        
         filename = f"zone{zone:02d}" if self.is_new_driver else f"zone{zone}"
         path = f"{self.driver_path}/{filename}"
         
@@ -129,13 +108,11 @@ class RGBController:
             with open(path, "w") as f:
                 f.write(hex_color)
         except Exception as e:
-            logger.error(f"Failed to write zone {zone}: {e}")
+            pass
 
     def write_all(self, hex_color):
-        """Write hex_color to all available zones."""
         if not self.available:
             return
-
         if self.is_new_driver:
             try:
                 with open(f"{self.driver_path}/all", "w") as f:
@@ -143,25 +120,21 @@ class RGBController:
             except Exception as e:
                 logger.error(f"Failed to write all zones: {e}")
         else:
-            # hp-rgb-lighting supports zone_count zones (4 or 8)
             for i in range(self.zone_count):
                 self.write_zone(i, hex_color)
 
     def write_brightness(self, value_or_bool):
         if not self.available:
             return
-            
         try:
             with open(f"{self.driver_path}/brightness", "w") as f:
                 if self.is_new_driver:
-                    # New driver takes 0-100
                     if isinstance(value_or_bool, bool):
                         val = "100" if value_or_bool else "0"
                     else:
                         val = str(int(value_or_bool))
                     f.write(val)
                 else:
-                    # Old driver takes 1 or 0
                     val = "1" if value_or_bool else "0"
                     f.write(val)
         except Exception as e:
@@ -180,7 +153,6 @@ class RGBController:
             return None
 
     def write_win_lock(self, locked):
-        # Mute LED is automatic in new driver, but win_lock might not exist in new driver, just ignore if fails
         if not self.available:
             return
         try:
@@ -193,16 +165,12 @@ class RGBController:
             
     def write_mode(self, mode, speed=50):
         if not self.is_new_driver:
-            return # Old driver does not support hardware animations
-            
+            return
         if mode == "cycle":
             mode = "rainbow"
-            
         try:
             with open(f"{self.driver_path}/animation_mode", "w") as f:
                 f.write(mode)
-                
-            # Speed is 1-10 in new driver, GUI gives 1-100
             mapped_speed = max(1, min(10, int(speed / 10)))
             with open(f"{self.driver_path}/animation_speed", "w") as f:
                 f.write(str(mapped_speed))
@@ -240,7 +208,6 @@ class RGBService:
         )
         self._config.load()
 
-        # Validate loaded colors
         colors = self._config.get("colors", [])
         if isinstance(colors, list):
             cleaned = []
@@ -252,56 +219,160 @@ class RGBService:
                 c0 = cleaned[0]
                 self._config.set("colors", (cleaned + [c0] * 8)[:8])
 
-        # Validate mode
         if self._config.get("mode") not in VALID_LIGHT_MODES:
             self._config.set("mode", "static")
 
+        # User-space animation driver configuration properties
+        self._anim_step = 0.0
+        self._lock = threading.Lock()
+
         self._apply_current_state()
         
-        # Restore win lock
         if self._rgb.is_available():
             self._rgb.write_win_lock(self._config.get("win_lock", False))
 
-        # Restore saved power state (delayed)
-        if self._rgb.is_available():
-            def _delayed_apply():
-                self._apply_current_state()
-            threading.Timer(3.0, _delayed_apply).start()
+        # Start the background software engine animation thread loop
+        threading.Thread(target=self._software_animation_loop, daemon=True).start()
             
     def _apply_current_state(self):
         if not self._rgb.is_available():
             return
 
-        power = self._config.get("power", True)
-        if not power:
-            self._rgb.write_brightness(0)
-            return
+        with self._lock:
+            power = self._config.get("power", True)
+            brightness = self._config.get("brightness", 100)
 
-        mode = self._config.get("mode", "static")
-        speed = self._config.get("speed", 50)
-        brightness = self._config.get("brightness", 100)
-        colors = self._config.get("colors", ["FF0000"] * 8)
+            if not power or brightness == 0:
+                self._rgb.write_brightness(0)
+                return
 
-        if self._rgb.is_new_driver:
-            self._rgb.write_brightness(brightness)
-            # Always set the mode first — the driver may reset zone colours
-            # when the mode changes, so writing colours *after* mode commit
-            # ensures they are not overwritten by the driver's defaults.
-            self._rgb.write_mode(mode, speed)
-            if mode == "static":
-                for i in range(self._rgb.zone_count):
-                    color = colors[i] if i < len(colors) else colors[0]
-                    self._rgb.write_zone(i, color)
-        else:
-            # hp-rgb-lighting (custom driver): supports zone_count zones (4 or 8).
-            # No animation modes — static colour only; brightness is binary on/off.
-            self._rgb.write_brightness(True)
-            zone_count = self._rgb.zone_count
-            for i in range(zone_count):
-                # Extend colors list if fewer colors than zones are stored
-                color = colors[i] if i < len(colors) else colors[0]
-                self._rgb.write_zone(i, color)
+            mode = self._config.get("mode", "static")
+            speed = self._config.get("speed", 50)
+            colors = self._config.get("colors", ["FF0000"] * 8)
 
+            if self._rgb.is_new_driver:
+                self._rgb.write_brightness(brightness)
+                self._rgb.write_mode(mode, speed)
+                if mode == "static":
+                    for i in range(self._rgb.zone_count):
+                        color = colors[i] if i < len(colors) else colors[0]
+                        self._rgb.write_zone(i, color)
+            else:
+                self._rgb.write_brightness(1)
+                if mode == "static":
+                    scaler = max(0.0, min(1.0, float(brightness) / 100.0))
+                    for i in range(self._rgb.zone_count):
+                        raw_hex = colors[i] if i < len(colors) else colors[0]
+                        self._write_scaled_zone_color(i, raw_hex, scaler)
+
+    def _write_scaled_zone_color(self, zone_idx, raw_hex, scaler):
+        try:
+            r = int(raw_hex[0:2], 16)
+            g = int(raw_hex[2:4], 16)
+            b = int(raw_hex[4:6], 16)
+        except (ValueError, IndexError):
+            r, g, b = 255, 0, 0
+
+        scaled_hex = f"{int(r * scaler):02X}{int(g * scaler):02X}{int(b * scaler):02X}"
+        self._rgb.write_zone(zone_idx, scaled_hex)
+
+    def _software_animation_loop(self):
+        """Background loop executing software animations on the legacy driver framework."""
+        while True:
+            time.sleep(0.05) # ~20Hz update rate framing ticks
+            
+            if not self._rgb.is_available() or self._rgb.is_new_driver:
+                continue
+
+            with self._lock:
+                power = self._config.get("power", True)
+                mode = self._config.get("mode", "static")
+                if not power or mode == "static":
+                    continue
+
+                brightness = self._config.get("brightness", 100)
+                scaler = max(0.0, min(1.0, float(brightness) / 100.0))
+                speed = self._config.get("speed", 50)
+                direction = self._config.get("direction", "ltr")
+                colors = self._config.get("colors", ["FF0000"] * 8)
+                zone_count = self._rgb.zone_count
+
+                # Ramping animation frequency based on user selection
+                step_increment = (speed / 100.0) * 0.25
+                self._anim_step += step_increment
+
+                try:
+                    r1, g1 = int(colors[0][0:2], 16), int(colors[0][2:4], 16)
+                    b1 = int(colors[0][4:6], 16)
+                except Exception:
+                    r1, g1, b1 = 255, 0, 0
+
+                for i in range(zone_count):
+                    # Direction inversion multiplier calculation
+                    eff_idx = i if direction == "ltr" else (zone_count - 1 - i)
+                    
+                    if mode in ("wave", "rainbow", "cycle"):
+                        # Calculate color phase shifting dynamically using a sine loop
+                        hue_shift = self._anim_step + (eff_idx * (2.0 * math.pi / zone_count))
+                        r = int((math.sin(hue_shift) * 127) + 128)
+                        g = int((math.sin(hue_shift + 2.0 * math.pi / 3.0) * 127) + 128)
+                        b = int((math.sin(hue_shift + 4.0 * math.pi / 3.0) * 127) + 128)
+                        
+                    elif mode in ("breathing", "pulse"):
+                        # Global factor brightness modulation
+                        factor = (math.sin(self._anim_step) * 0.5) + 0.5
+                        r, g, b = int(r1 * factor), int(g1 * factor), int(b1 * factor)
+                        
+                    elif mode == "chase":
+                        # Sequentially steps a lit frame block down the zone count index
+                        pos = int(self._anim_step * 2) % zone_count
+                        factor = 1.0 if eff_idx == pos else 0.15
+                        r, g, b = int(r1 * factor), int(g1 * factor), int(b1 * factor)
+
+                    elif mode == "sparkle":
+                        # Simulated randomness per individual matrix zone
+                        factor = random.uniform(0.1, 1.0) if random.random() > 0.75 else 0.2
+                        r, g, b = int(r1 * factor), int(g1 * factor), int(b1 * factor)
+
+                    elif mode == "candle":
+                        # Low frequency organic noise flicker simulation
+                        noise = (math.sin(self._anim_step) * 0.3) + (math.sin(self._anim_step * 2.3) * 0.15)
+                        factor = max(0.3, min(1.0, 0.6 + noise))
+                        # Tinting green channel down slightly to maintain a warm fire amber glow
+                        r, g, b = int(r1 * factor), int(g1 * 0.6 * factor), int(b1 * 0.2 * factor)
+
+                    elif mode == "aurora":
+                        # Slow moving deep cyan, green, and purple fluid phase shift
+                        hue_shift = (self._anim_step * 0.3) + (eff_idx * 0.5)
+                        r = int((math.sin(hue_shift) * 40) + 40)
+                        g = int((math.cos(hue_shift + 1.0) * 100) + 120)
+                        b = int((math.sin(hue_shift + 2.0) * 90) + 140)
+
+                    elif mode == "disco":
+                        # Sharp random palette jumps synched directly to speed changes
+                        beat = int(self._anim_step * 1.5)
+                        random.seed(beat + eff_idx)
+                        r = random.randint(0, 255)
+                        g = random.randint(0, 255)
+                        b = random.randint(0, 255)
+
+                    elif mode == "gradient":
+                        # Smooth cross-fading sweep between the first two custom color matrix elements
+                        try:
+                            r2, g2 = int(colors[1][0:2], 16), int(colors[1][2:4], 16)
+                            b2 = int(colors[1][4:6], 16)
+                        except Exception:
+                            r2, g2, b2 = 0, 0, 255 # Default fallback gradient profile secondary anchor color
+                        
+                        blend_factor = (math.sin(self._anim_step + (eff_idx * 0.7)) * 0.5) + 0.5
+                        r = int(r1 * (1.0 - blend_factor) + r2 * blend_factor)
+                        g = int(g1 * (1.0 - blend_factor) + g2 * blend_factor)
+                        b = int(b1 * (1.0 - blend_factor) + b2 * blend_factor)
+                    else:
+                        continue
+
+                    scaled_hex = f"{int(r * scaler):02X}{int(g * scaler):02X}{int(b * scaler):02X}"
+                    self._rgb.write_zone(i, scaled_hex)
 
     # ── D-Bus methods ─────────────────────────────────────────────────
 
@@ -368,9 +439,6 @@ class RGBService:
 
     def Ping(self):
         return "OK"
-
-
-# ─── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
     service = RGBService()
