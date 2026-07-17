@@ -27,7 +27,6 @@ logger = setup_logging("platform")
 
 
 class PlatformService:
-    MacroKeyPressed = signal()
     """
     <node>
       <interface name="com.yyl.hpmanager.platform">
@@ -42,6 +41,7 @@ class PlatformService:
       </interface>
     </node>
     """
+    MacroKeyPressed = signal()
 
     def __init__(self):
         self._config = ServiceConfig("platform", {"prtsc_fix": False, "f1_fix": False})

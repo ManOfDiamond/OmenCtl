@@ -121,9 +121,19 @@ class RGBController:
     def write_zone(self, zone, hex_color):
         if not self.available or not (0 <= zone <= 7):
             return
-        
-        # New driver uses zone00, zone01, etc.
-        # Old driver uses zone0, zone1, etc.
+
+        if not self.is_new_driver:
+            try:
+                clean_hex = hex_color.lstrip("#")
+                r = int(clean_hex[0:2], 16)
+                g = int(clean_hex[2:4], 16)
+                b = int(clean_hex[4:6], 16)
+                data_to_write = f"{r} {g} {b}"
+            except Exception:
+                data_to_write = hex_color
+        else:
+            data_to_write = hex_color
+
         filename = f"zone{zone:02d}" if self.is_new_driver else f"zone{zone}"
         path = f"{self.driver_path}/{filename}"
         
@@ -213,7 +223,7 @@ class RGBController:
 
 
 class RGBService:
-    \"\"\"
+    """
     <node>
       <interface name="com.yyl.hpmanager.rgb">
         <method name="SetColor"><arg type="i" name="z" direction="in"/><arg type="s" name="h" direction="in"/><arg type="s" name="resp" direction="out"/></method>
@@ -224,7 +234,7 @@ class RGBService:
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
-    \"\"\"
+    """
 
     def __init__(self):
         self._rgb = RGBController()
