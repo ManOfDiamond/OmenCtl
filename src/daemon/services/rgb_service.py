@@ -122,8 +122,10 @@ class RGBController:
         if not self.available or not (0 <= zone <= 7):
             return
         
-        # New driver uses zone00, zone01, etc.
-        # Old driver uses zone0, zone1, etc.
+        # Force mirror inversion for the 4 physical zones (0-3)
+        if 0 <= zone <= 3:
+            zone = 3 - zone
+        
         filename = f"zone{zone:02d}" if self.is_new_driver else f"zone{zone}"
         path = f"{self.driver_path}/{filename}"
         
@@ -213,7 +215,7 @@ class RGBController:
 
 
 class RGBService:
-    \"\"\"
+    """
     <node>
       <interface name="com.yyl.hpmanager.rgb">
         <method name="SetColor"><arg type="i" name="z" direction="in"/><arg type="s" name="h" direction="in"/><arg type="s" name="resp" direction="out"/></method>
@@ -224,7 +226,7 @@ class RGBService:
         <method name="Ping"><arg type="s" name="resp" direction="out"/></method>
       </interface>
     </node>
-    \"\"\"
+    """
 
     def __init__(self):
         self._rgb = RGBController()

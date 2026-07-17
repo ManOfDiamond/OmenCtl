@@ -27,7 +27,6 @@ logger = setup_logging("platform")
 
 
 class PlatformService:
-    MacroKeyPressed = signal()
     """
     <node>
       <interface name="com.yyl.hpmanager.platform">
@@ -43,14 +42,13 @@ class PlatformService:
     </node>
     """
 
+    # Signal definition must follow the introspection docstring perfectly
+    MacroKeyPressed = signal()
+
     def __init__(self):
         self._config = ServiceConfig("platform", {"prtsc_fix": False, "f1_fix": False})
         self._config.load()
         self.ec = LinuxEcController()
-        
-        if HAS_EVDEV:
-            self._macro_thread = threading.Thread(target=self._macro_listener_loop, daemon=True, name="MacroListener")
-            self._macro_thread.start()
 
         self._static_info = {
             "hostname": platform.node(),
@@ -79,8 +77,21 @@ class PlatformService:
         self._nv_poll_interval = 5.0
 
         self._cache_lock = threading.Lock()
-        self._info_cache: typing.Dict[str, typing.Any] = {}
+        
+        # Populate the base cache immediately
+        self._info_cache = self._static_info.copy()
+        self._info_cache.update({
+            "cpu_temp": 0.0,
+            "gpu_temp": 0.0,
+            "gpu_vram": 0.0,
+            "battery": {}
+        })
+        
         self._last_dbus_call_time = 0.0
+
+        if HAS_EVDEV:
+            self._macro_thread = threading.Thread(target=self._macro_listener_loop, daemon=True, name="MacroListener")
+            self._macro_thread.start()
 
         # Restore keyboard fixes
         if self._config.get("prtsc_fix") or self._config.get("f1_fix"):
@@ -264,7 +275,6 @@ class PlatformService:
             return json.dumps(self._info_cache)
 
     def GetHardwareDumpJson(self):
-        """Returns hardware dump data (ACPI, System, EC) as pure JSON."""
         logger.info("Generating hardware dump (JSON)...")
         data = {
             "system": {},
@@ -272,7 +282,6 @@ class PlatformService:
             "acpi": {}
         }
         
-        # Basic Info
         with self._cache_lock:
             info = self._info_cache.copy()
             data["system"] = {
@@ -282,12 +291,10 @@ class PlatformService:
                 "kernel": info.get('kernel', 'Unknown')
             }
 
-        # EC Data
         data["ec"]["supported"] = self.ec.has_ec_access
         if self.ec.has_ec_access:
             data["ec"]["capabilities"] = self.ec.capabilities.to_dict()
 
-        # ACPI Data
         data["acpi"] = acpi_mapper.dump_and_analyze_acpi()
 
         return json.dumps(data)
@@ -301,7 +308,6 @@ class PlatformService:
             ""
         ]
 
-        # Basic Info
         with self._cache_lock:
             info = self._info_cache.copy()
             lines.append("## System")
@@ -311,7 +317,6 @@ class PlatformService:
             lines.append(f"- **Kernel:** {info.get('kernel', 'Unknown')}")
             lines.append("")
 
-        # EC Data
         lines.append("## EC Access")
         lines.append(f"- **Supported:** {self.ec.has_ec_access}")
         if self.ec.has_ec_access:
@@ -321,7 +326,6 @@ class PlatformService:
                 lines.append(f"  - **{k}**: {v}")
         lines.append("")
 
-        # ACPI DSDT Data
         lines.append("## ACPI & DSDT Analysis")
         acpi_data = acpi_mapper.dump_and_analyze_acpi()
         
@@ -457,7 +461,7 @@ class PlatformService:
                         if dev.fd == fd:
                             try:
                                 for event in dev.read():
-                                    if event.type == evdev.ecodes.EV_KEY and event.value == 1: # Key down
+                                    if event.type == evdev.ecodes.EV_KEY and event.value == 1:
                                         if event.code in MACRO_KEYS:
                                             key_name = MACRO_KEYS[event.code]
                                             logger.info(f"Macro Key Pressed: {key_name} (code: {event.code})")
@@ -465,7 +469,7 @@ class PlatformService:
                             except (OSError, IOError):
                                 poller.unregister(dev.fd)
                                 del devices[dev.path]
-                                break  # stop iterating devices for this fd — device is gone
+                                break
             except Exception as e:
                 logger.error(f"Macro listener error: {e}")
                 time.sleep(5)
