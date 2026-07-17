@@ -33,7 +33,7 @@ class LinuxEcController:
     def __init__(self):
         self._lock = threading.Lock()
         self.capabilities = detect_capabilities()
-        self.board_id = get_board_id()
+        self.board_id = get_board_id() or "UNKNOWN"
         self.product_name = get_product_name()
         
         # Check if direct EC access is safe on this board

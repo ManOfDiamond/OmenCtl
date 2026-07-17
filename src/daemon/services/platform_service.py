@@ -41,6 +41,7 @@ class PlatformService:
       </interface>
     </node>
     """
+    MacroKeyPressed = signal()
 
     # Signal definition must follow the introspection docstring perfectly
     MacroKeyPressed = signal()

@@ -121,11 +121,7 @@ class RGBController:
     def write_zone(self, zone, hex_color):
         if not self.available or not (0 <= zone <= 7):
             return
-        
-        # Force mirror inversion for the 4 physical zones (0-3)
-        if 0 <= zone <= 3:
-            zone = 3 - zone
-        
+ 
         filename = f"zone{zone:02d}" if self.is_new_driver else f"zone{zone}"
         path = f"{self.driver_path}/{filename}"
         
