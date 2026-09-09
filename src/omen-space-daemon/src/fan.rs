@@ -339,6 +339,11 @@ impl FanService {
         if sysfs_exists(&pwm_enable_path).await {
             let current = sysfs_read(&pwm_enable_path, 2).await;
             if current != 1 {
+                if current == 0 {
+                    // Transition through EC hardware control (2) to clear stuck max mode
+                    let _ = sysfs_write(&pwm_enable_path, "2").await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                }
                 if !sysfs_write(&pwm_enable_path, "1").await {
                     warn!("Failed to set pwm1_enable=1 for manual fan control");
                     return false;
@@ -687,6 +692,13 @@ impl FanService {
         // Step 1: Write pwm1_enable
         let mut ok = false;
         if let Some(ref hwmon) = state.hwmon_path {
+            if pwm_enable_val == 1 {
+                let current = sysfs_read(hwmon.join("pwm1_enable"), 2).await;
+                if current == 0 {
+                    let _ = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                }
+            }
             ok = sysfs_write(hwmon.join("pwm1_enable"), pwm_enable_val.to_string()).await;
             if ok {
                 info!("Set pwm1_enable={} (mode={})", pwm_enable_val, mode);
