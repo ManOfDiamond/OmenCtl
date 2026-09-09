@@ -224,7 +224,7 @@ fn build_interactive_keyboard(
     global_color_box.append(&global_color_label);
     global_color_box.append(&global_color_btn);
     
-    if detected_mode == KeyboardMode::Omen4Zone || detected_mode == KeyboardMode::PerKey {
+    if detected_mode == KeyboardMode::Omen4Zone {
         global_color_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
         global_color_box.append(&c1_label);
         global_color_box.append(&c1_btn);
