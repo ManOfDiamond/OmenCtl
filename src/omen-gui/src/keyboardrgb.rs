@@ -417,6 +417,10 @@ fn build_interactive_keyboard(
     // ------------------------
     
     for (name, btn) in buttons_map.borrow().iter() {
+        if name == "global_color_btn" || (name.starts_with("c") && name.ends_with("_btn")) {
+            continue;
+        }
+        
         let b_map_inner = b_map_clone.clone();
         let name_inner = name.clone();
         let zc_inner = zone_colors.clone();
