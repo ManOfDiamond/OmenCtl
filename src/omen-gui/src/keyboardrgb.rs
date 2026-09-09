@@ -134,9 +134,9 @@ fn build_interactive_keyboard(
         vec![("Shift", 2.25), ("Z", 1.0), ("X", 1.0), ("C", 1.0), ("V", 1.0), ("B", 1.0), ("N", 1.0), ("M", 1.0), (",", 1.0), (".", 1.0), ("/", 1.0), ("Shift_R", 2.75), ("", 1.5), ("Up", 1.0), ("", 1.5), ("1_num", 1.0), ("2_num", 1.0), ("3_num", 1.0), ("Ent", 1.0)],
         vec![("Ctrl", 1.25), ("Win", 1.25), ("Alt", 1.25), ("Space", 6.25), ("Alt_R", 1.25), ("Fn", 1.25), ("Menu", 1.25), ("Ctrl_R", 1.25), ("", 0.5), ("Left", 1.0), ("Down", 1.0), ("Right", 1.0), ("", 0.5), ("0_num", 2.0), ("._num", 1.0), ("", 1.0)]
     ];
-    let unit_size = 40.0; // 1U = 40px
+    let unit_size = 30.0; // 1U = 30px
     let margin = 4.0;
-    let height = 36;
+    let height = 28;
     
     let buttons_map: Rc<RefCell<HashMap<String, gtk::Button>>> = Rc::new(RefCell::new(HashMap::new()));
     
@@ -144,20 +144,20 @@ fn build_interactive_keyboard(
     let mut global_idx = 0;
     
     if detected_mode == KeyboardMode::Victus1Zone {
-        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).margin_top(24).margin_bottom(24).halign(gtk::Align::Center).build();
-        let btn = gtk::Button::builder().label(i18n::t("kb_color_map")).width_request(500).height_request(160).build();
-        btn.add_css_class("kb-key");
+        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).margin_top(32).margin_bottom(32).halign(gtk::Align::Center).build();
+        let btn = gtk::Button::builder().label(i18n::t("kb_color_map")).width_request(560).height_request(180).build();
+        btn.add_css_class("kb-zone-btn");
         btn.set_widget_name("zone_all");
         buttons_map.borrow_mut().insert("zone_all".to_string(), btn.clone());
         visualizer_box.append(&btn);
         kb_card.append(&visualizer_box);
     } else if detected_mode == KeyboardMode::Omen4Zone {
-        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(12).margin_top(24).margin_bottom(24).halign(gtk::Align::Center).build();
+        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(16).margin_top(32).margin_bottom(32).halign(gtk::Align::Center).build();
         let zones = ["Left", "Center", "Right", "WASD"];
         let names = ["zone_0", "zone_1", "zone_2", "zone_3"];
         for i in 0..4 {
-            let btn = gtk::Button::builder().label(zones[i]).width_request(120).height_request(160).build();
-            btn.add_css_class("kb-key");
+            let btn = gtk::Button::builder().label(zones[i]).width_request(130).height_request(180).build();
+            btn.add_css_class("kb-zone-btn");
             btn.set_widget_name(names[i]);
             buttons_map.borrow_mut().insert(names[i].to_string(), btn.clone());
             visualizer_box.append(&btn);
