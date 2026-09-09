@@ -282,7 +282,25 @@ impl PowerService {
     // ── Profile detection ──────────────────────────────────────────────────────
 
     async fn detect_current_profile() -> String {
-        // Try platform_profile first (underscore then hyphen — OmenCore probe order)
+        // 1. Try system76-power if installed
+        if let Ok(out) = tokio::process::Command::new("system76-power").arg("profile").output().await {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+                if stdout.contains("performance") { return "performance".to_string(); }
+                if stdout.contains("battery") { return "power-saver".to_string(); }
+                if stdout.contains("balanced") { return "balanced".to_string(); }
+            }
+        }
+
+        // 2. Try powerprofilesctl if installed
+        if let Ok(out) = tokio::process::Command::new("powerprofilesctl").arg("get").output().await {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+                return Self::normalize_profile(&stdout);
+            }
+        }
+
+        // 3. Fallback: Try platform_profile first (underscore then hyphen — OmenCore probe order)
         let platform_paths = [
             "/sys/firmware/acpi/platform_profile",
             "/sys/devices/platform/hp-wmi/platform_profile",
@@ -358,7 +376,32 @@ impl PowerService {
     async fn sync_omen_profile(profile: &str) -> bool {
         let mut ok = false;
 
-        // platform_profile — underscore and hyphen variants (OmenCore probe order)
+        // 1. Try setting via system76-power if installed
+        let s76_profile = match profile {
+            "performance" => "performance",
+            "power-saver" => "battery",
+            _ => "balanced",
+        };
+        if let Ok(mut child) = tokio::process::Command::new("system76-power").args(["profile", s76_profile]).spawn() {
+            if let Ok(status) = child.wait().await {
+                if status.success() {
+                    info!("Set system76-power profile to '{}'", s76_profile);
+                    ok = true;
+                }
+            }
+        }
+
+        // 2. Try setting via powerprofilesctl if installed
+        if let Ok(mut child) = tokio::process::Command::new("powerprofilesctl").args(["set", profile]).spawn() {
+            if let Ok(status) = child.wait().await {
+                if status.success() {
+                    info!("Set powerprofilesctl profile to '{}'", profile);
+                    ok = true;
+                }
+            }
+        }
+
+        // 3. Fallback/Explicit Override: ACPI platform_profile — underscore and hyphen variants (OmenCore probe order)
         let acpi_paths = [
             "/sys/firmware/acpi/platform_profile",
             "/sys/devices/platform/hp-wmi/platform_profile",
