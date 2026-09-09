@@ -40,10 +40,11 @@ fn get_active_keyboard_mode(detected: KeyboardMode) -> KeyboardMode {
 }
 
 fn get_zone_for_key(name: &str) -> i32 {
-    if name == "zone_0" { return 1; }
-    if name == "zone_1" { return 2; }
-    if name == "zone_2" { return 3; }
-    if name == "zone_3" { return 4; }
+    if name == "zone_0" || name == "c1_btn" { return 1; }
+    if name == "global_color_btn" { return 8; }
+    if name == "zone_1" || name == "c2_btn" { return 2; }
+    if name == "zone_2" || name == "c3_btn" { return 3; }
+    if name == "zone_3" || name == "c4_btn" { return 4; }
     match name {
         "W" | "A" | "S" | "D" => 4,
         "Esc" | "F1" | "F2" | "F3" | "F4" | "~" | "1" | "2" | "3" | "4" | 
@@ -143,28 +144,7 @@ fn build_interactive_keyboard(
     let mut key_x_pos = HashMap::new();
     let mut global_idx = 0;
     
-    if detected_mode == KeyboardMode::Victus1Zone {
-        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).margin_top(32).margin_bottom(32).halign(gtk::Align::Center).build();
-        let btn = gtk::Button::builder().label(i18n::t("kb_color_map")).width_request(560).height_request(180).build();
-        btn.add_css_class("kb-zone-btn");
-        btn.set_widget_name("zone_all");
-        buttons_map.borrow_mut().insert("zone_all".to_string(), btn.clone());
-        visualizer_box.append(&btn);
-        kb_card.append(&visualizer_box);
-    } else if detected_mode == KeyboardMode::Omen4Zone {
-        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(16).margin_top(32).margin_bottom(32).halign(gtk::Align::Center).build();
-        let zones = ["Left", "Center", "Right", "WASD"];
-        let names = ["zone_0", "zone_1", "zone_2", "zone_3"];
-        for i in 0..4 {
-            let btn = gtk::Button::builder().label(zones[i]).width_request(130).height_request(180).build();
-            btn.add_css_class("kb-zone-btn");
-            btn.set_widget_name(names[i]);
-            buttons_map.borrow_mut().insert(names[i].to_string(), btn.clone());
-            visualizer_box.append(&btn);
-        }
-        kb_card.append(&visualizer_box);
-    } else {
-        for row_keys in &layout {
+    for row_keys in &layout {
             let row_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(0).halign(gtk::Align::Center).build();
             let mut x_idx = 0;
             for (name, size_mult) in row_keys {
@@ -198,7 +178,6 @@ fn build_interactive_keyboard(
             }
             kb_card.append(&row_box);
         }
-    }
     
     let b_map_clone = buttons_map.clone();
     let dyn_provider = Rc::new(gtk::CssProvider::new());
@@ -235,6 +214,12 @@ fn build_interactive_keyboard(
     let c4_btn = gtk::Button::builder().width_request(40).height_request(24).build();
     c4_btn.add_css_class("circular");
     c4_btn.set_widget_name("c4_btn");
+
+    buttons_map.borrow_mut().insert("global_color_btn".to_string(), global_color_btn.clone());
+    buttons_map.borrow_mut().insert("c1_btn".to_string(), c1_btn.clone());
+    buttons_map.borrow_mut().insert("c2_btn".to_string(), c2_btn.clone());
+    buttons_map.borrow_mut().insert("c3_btn".to_string(), c3_btn.clone());
+    buttons_map.borrow_mut().insert("c4_btn".to_string(), c4_btn.clone());
 
     global_color_box.append(&global_color_label);
     global_color_box.append(&global_color_btn);
@@ -306,6 +291,9 @@ fn build_interactive_keyboard(
                 if let Some(target_btn) = b_map_local.borrow().get(k) {
                     let wname = target_btn.widget_name();
                     css_str.push_str(&format!("#{} {{ background: {}; background-image: none; }}\n", wname.as_str(), c));
+                    if k.starts_with("c") || k.starts_with("global_color") {
+                        css_str.push_str(&format!("#{} {{ border: 1px solid rgba(255,255,255,0.4); }}\n", wname.as_str()));
+                    }
                 }
             }
             dyn_local.load_from_string(&css_str);
@@ -313,40 +301,116 @@ fn build_interactive_keyboard(
     });
 
     let dyn_prov_c1 = dyn_provider.clone();
+    let b_map_c1 = buttons_map.clone();
+    let kc_c1 = key_colors.clone();
     c1_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c1.clone();
+        let b_map_local = b_map_c1.clone();
+        let kc_local = kc_c1.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
-            let css_str = format!("#c1_btn {{ background: {}; background-image: none; border: 1px solid rgba(255,255,255,0.4); }}\n", hex);
             crate::daemon_client::set_color_sync(0, hex.clone());
+            let map = b_map_local.borrow();
+            for (k, _) in map.iter() {
+                if crate::keyboardrgb::get_zone_for_key(k) == 1 {
+                    kc_local.borrow_mut().insert(k.clone(), hex.clone());
+                }
+            }
+            let mut css_str = String::new();
+            for (k, c) in kc_local.borrow().iter() {
+                if let Some(target_btn) = map.get(k) {
+                    let wname = target_btn.widget_name();
+                    css_str.push_str(&format!("#{} {{ background: {}; background-image: none; }}\n", wname.as_str(), c));
+                    if k.starts_with("c") || k.starts_with("global_color") {
+                        css_str.push_str(&format!("#{} {{ border: 1px solid rgba(255,255,255,0.4); }}\n", wname.as_str()));
+                    }
+                }
+            }
             dyn_local.load_from_string(&css_str);
         }));
     });
 
     let dyn_prov_c2 = dyn_provider.clone();
+    let b_map_c2 = buttons_map.clone();
+    let kc_c2 = key_colors.clone();
     c2_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c2.clone();
+        let b_map_local = b_map_c2.clone();
+        let kc_local = kc_c2.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
-            let css_str = format!("#c2_btn {{ background: {}; background-image: none; border: 1px solid rgba(255,255,255,0.4); }}\n", hex);
             crate::daemon_client::set_color_sync(1, hex.clone());
+            let map = b_map_local.borrow();
+            for (k, _) in map.iter() {
+                if crate::keyboardrgb::get_zone_for_key(k) == 2 {
+                    kc_local.borrow_mut().insert(k.clone(), hex.clone());
+                }
+            }
+            let mut css_str = String::new();
+            for (k, c) in kc_local.borrow().iter() {
+                if let Some(target_btn) = map.get(k) {
+                    let wname = target_btn.widget_name();
+                    css_str.push_str(&format!("#{} {{ background: {}; background-image: none; }}\n", wname.as_str(), c));
+                    if k.starts_with("c") || k.starts_with("global_color") {
+                        css_str.push_str(&format!("#{} {{ border: 1px solid rgba(255,255,255,0.4); }}\n", wname.as_str()));
+                    }
+                }
+            }
             dyn_local.load_from_string(&css_str);
         }));
     });
     let dyn_prov_c3 = dyn_provider.clone();
+    let b_map_c3 = buttons_map.clone();
+    let kc_c3 = key_colors.clone();
     c3_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c3.clone();
+        let b_map_local = b_map_c3.clone();
+        let kc_local = kc_c3.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
-            let css_str = format!("#c3_btn {{ background: {}; background-image: none; border: 1px solid rgba(255,255,255,0.4); }}\n", hex);
             crate::daemon_client::set_color_sync(2, hex.clone());
+            let map = b_map_local.borrow();
+            for (k, _) in map.iter() {
+                if crate::keyboardrgb::get_zone_for_key(k) == 3 {
+                    kc_local.borrow_mut().insert(k.clone(), hex.clone());
+                }
+            }
+            let mut css_str = String::new();
+            for (k, c) in kc_local.borrow().iter() {
+                if let Some(target_btn) = map.get(k) {
+                    let wname = target_btn.widget_name();
+                    css_str.push_str(&format!("#{} {{ background: {}; background-image: none; }}\n", wname.as_str(), c));
+                    if k.starts_with("c") || k.starts_with("global_color") {
+                        css_str.push_str(&format!("#{} {{ border: 1px solid rgba(255,255,255,0.4); }}\n", wname.as_str()));
+                    }
+                }
+            }
             dyn_local.load_from_string(&css_str);
         }));
     });
 
     let dyn_prov_c4 = dyn_provider.clone();
+    let b_map_c4 = buttons_map.clone();
+    let kc_c4 = key_colors.clone();
     c4_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c4.clone();
+        let b_map_local = b_map_c4.clone();
+        let kc_local = kc_c4.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
-            let css_str = format!("#c4_btn {{ background: {}; background-image: none; border: 1px solid rgba(255,255,255,0.4); }}\n", hex);
             crate::daemon_client::set_color_sync(3, hex.clone());
+            let map = b_map_local.borrow();
+            for (k, _) in map.iter() {
+                if crate::keyboardrgb::get_zone_for_key(k) == 4 {
+                    kc_local.borrow_mut().insert(k.clone(), hex.clone());
+                }
+            }
+            let mut css_str = String::new();
+            for (k, c) in kc_local.borrow().iter() {
+                if let Some(target_btn) = map.get(k) {
+                    let wname = target_btn.widget_name();
+                    css_str.push_str(&format!("#{} {{ background: {}; background-image: none; }}\n", wname.as_str(), c));
+                    if k.starts_with("c") || k.starts_with("global_color") {
+                        css_str.push_str(&format!("#{} {{ border: 1px solid rgba(255,255,255,0.4); }}\n", wname.as_str()));
+                    }
+                }
+            }
             dyn_local.load_from_string(&css_str);
         }));
     });
