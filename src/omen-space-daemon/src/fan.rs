@@ -269,14 +269,17 @@ impl FanService {
                 let mut p = Vec::new();
                 if let Ok(entries) = glob("/sys/class/hwmon/hwmon*/temp*_input") {
                     for entry in entries.filter_map(Result::ok) {
-                        let mut is_dgpu = false;
-                        if let Ok(real_path) = std::fs::canonicalize(&entry) {
+                        // Filter out dGPU hwmon from raw sysfs reading so it doesn't trigger pm_runtime_get_sync
+                        let is_dgpu = if let Ok(real_path) = std::fs::canonicalize(&entry) {
                             let s = real_path.to_string_lossy();
-                            if s.contains("0000:01:00.0") || s.contains("nvidia") || s.contains("nouveau") {
-                                is_dgpu = true;
-                            }
+                            s.contains("0000:01:00.0") || s.contains("nvidia")
+                        } else {
+                            false
+                        };
+
+                        if !is_dgpu {
+                            p.push(entry);
                         }
-                        if !is_dgpu { p.push(entry); }
                     }
                 }
                 p
@@ -288,12 +291,14 @@ impl FanService {
                 if let Ok(val_str) = std::fs::read_to_string(entry) {
                     if let Ok(milli) = val_str.trim().parse::<f64>() {
                         let temp = milli / 1000.0;
-                        if temp > max_temp && temp < 150.0 { max_temp = temp; }
+                        if temp > max_temp && temp < 150.0 {
+                            max_temp = temp;
+                        }
                     }
                 }
             }
 
-            // 2. Factor in dGPU temperature safely
+            // 2. Factor in dGPU temperature safely (returns 0.0 when sleeping or cooling down)
             let gpu_temp = crate::sysmon::get_safe_gpu_temp();
             if gpu_temp > max_temp && gpu_temp < 150.0 {
                 max_temp = gpu_temp;
