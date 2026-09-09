@@ -127,14 +127,15 @@ fn build_interactive_keyboard(
         .build();
 
     let layout = vec![
-        vec![("Esc", 1.0), ("F1", 1.0), ("F2", 1.0), ("F3", 1.0), ("F4", 1.0), ("F5", 1.0), ("F6", 1.0), ("F7", 1.0), ("F8", 1.0), ("F9", 1.0), ("F10", 1.0), ("F11", 1.0), ("F12", 1.0), ("PrtSc", 1.0), ("ScrLk", 1.0), ("Pause", 1.0)],
-        vec![("~", 1.0), ("1", 1.0), ("2", 1.0), ("3", 1.0), ("4", 1.0), ("5", 1.0), ("6", 1.0), ("7", 1.0), ("8", 1.0), ("9", 1.0), ("0", 1.0), ("-", 1.0), ("=", 1.0), ("Backspace", 2.0), ("Ins", 1.0), ("Home", 1.0), ("PgUp", 1.0), ("Num", 1.0), ("/", 1.0), ("*", 1.0), ("-_num", 1.0)],
-        vec![("Tab", 1.5), ("Q", 1.0), ("W", 1.0), ("E", 1.0), ("R", 1.0), ("T", 1.0), ("Y", 1.0), ("U", 1.0), ("I", 1.0), ("O", 1.0), ("P", 1.0), ("[", 1.0), ("]", 1.0), ("\\", 1.5), ("Del", 1.0), ("End", 1.0), ("PgDn", 1.0), ("7_num", 1.0), ("8_num", 1.0), ("9_num", 1.0), ("+", 1.0)],
-        vec![("Caps", 1.8), ("A", 1.0), ("S", 1.0), ("D", 1.0), ("F", 1.0), ("G", 1.0), ("H", 1.0), ("J", 1.0), ("K", 1.0), ("L", 1.0), (";", 1.0), ("'", 1.0), ("Enter", 2.2), ("4_num", 1.0), ("5_num", 1.0), ("6_num", 1.0)],
-        vec![("Shift", 2.4), ("Z", 1.0), ("X", 1.0), ("C", 1.0), ("V", 1.0), ("B", 1.0), ("N", 1.0), ("M", 1.0), (",", 1.0), (".", 1.0), ("/", 1.0), ("Shift_R", 2.6), ("Up", 1.0), ("1_num", 1.0), ("2_num", 1.0), ("3_num", 1.0), ("Ent", 1.0)],
-        vec![("Ctrl", 1.5), ("Win", 1.2), ("Alt", 1.2), ("Space", 6.0), ("Alt_R", 1.2), ("Fn", 1.2), ("Menu", 1.2), ("Ctrl_R", 1.5), ("Left", 1.0), ("Down", 1.0), ("Right", 1.0), ("0_num", 2.0), ("._num", 1.0)]
+        vec![("Esc", 1.0), ("", 1.0), ("F1", 1.0), ("F2", 1.0), ("F3", 1.0), ("F4", 1.0), ("", 0.5), ("F5", 1.0), ("F6", 1.0), ("F7", 1.0), ("F8", 1.0), ("", 0.5), ("F9", 1.0), ("F10", 1.0), ("F11", 1.0), ("F12", 1.0), ("", 0.5), ("PrtSc", 1.0), ("ScrLk", 1.0), ("Pause", 1.0), ("", 4.5)],
+        vec![("~", 1.0), ("1", 1.0), ("2", 1.0), ("3", 1.0), ("4", 1.0), ("5", 1.0), ("6", 1.0), ("7", 1.0), ("8", 1.0), ("9", 1.0), ("0", 1.0), ("-", 1.0), ("=", 1.0), ("Backspace", 2.0), ("", 0.5), ("Ins", 1.0), ("Home", 1.0), ("PgUp", 1.0), ("", 0.5), ("Num", 1.0), ("/", 1.0), ("*", 1.0), ("-_num", 1.0)],
+        vec![("Tab", 1.5), ("Q", 1.0), ("W", 1.0), ("E", 1.0), ("R", 1.0), ("T", 1.0), ("Y", 1.0), ("U", 1.0), ("I", 1.0), ("O", 1.0), ("P", 1.0), ("[", 1.0), ("]", 1.0), ("\\", 1.5), ("", 0.5), ("Del", 1.0), ("End", 1.0), ("PgDn", 1.0), ("", 0.5), ("7_num", 1.0), ("8_num", 1.0), ("9_num", 1.0), ("+", 1.0)],
+        vec![("Caps", 1.75), ("A", 1.0), ("S", 1.0), ("D", 1.0), ("F", 1.0), ("G", 1.0), ("H", 1.0), ("J", 1.0), ("K", 1.0), ("L", 1.0), (";", 1.0), ("'", 1.0), ("Enter", 2.25), ("", 4.0), ("4_num", 1.0), ("5_num", 1.0), ("6_num", 1.0), ("", 1.0)],
+        vec![("Shift", 2.25), ("Z", 1.0), ("X", 1.0), ("C", 1.0), ("V", 1.0), ("B", 1.0), ("N", 1.0), ("M", 1.0), (",", 1.0), (".", 1.0), ("/", 1.0), ("Shift_R", 2.75), ("", 1.5), ("Up", 1.0), ("", 1.5), ("1_num", 1.0), ("2_num", 1.0), ("3_num", 1.0), ("Ent", 1.0)],
+        vec![("Ctrl", 1.25), ("Win", 1.25), ("Alt", 1.25), ("Space", 6.25), ("Alt_R", 1.25), ("Fn", 1.25), ("Menu", 1.25), ("Ctrl_R", 1.25), ("", 0.5), ("Left", 1.0), ("Down", 1.0), ("Right", 1.0), ("", 0.5), ("0_num", 2.0), ("._num", 1.0), ("", 1.0)]
     ];
-    let base_width = 38;
+    let unit_size = 40.0; // 1U = 40px
+    let margin = 4.0;
     let height = 36;
     
     let buttons_map: Rc<RefCell<HashMap<String, gtk::Button>>> = Rc::new(RefCell::new(HashMap::new()));
@@ -164,10 +165,17 @@ fn build_interactive_keyboard(
         kb_card.append(&visualizer_box);
     } else {
         for row_keys in &layout {
-            let row_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).build();
+            let row_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(0).build();
             let mut x_idx = 0;
             for (name, size_mult) in row_keys {
-                let width = (base_width as f32 * size_mult) as i32;
+                let width = (unit_size * *size_mult as f64) as i32;
+                
+                if name.is_empty() {
+                    let spacer = gtk::Box::builder().width_request(width).height_request(height).build();
+                    row_box.append(&spacer);
+                    continue;
+                }
+                
                 let display_name = if name.ends_with("_R") { 
                     &name[..name.len()-2] 
                 } else if name.ends_with("_num") {
@@ -176,7 +184,9 @@ fn build_interactive_keyboard(
                     name 
                 };
                 let key_btn = gtk::Button::builder().label(display_name).build();
-                key_btn.set_size_request(width, height);
+                key_btn.set_size_request(width - margin as i32, height);
+                key_btn.set_margin_end(margin as i32);
+                key_btn.set_margin_bottom(margin as i32);
                 key_btn.set_widget_name(&format!("key_{}", global_idx));
                 key_btn.add_css_class("kb-key");
                 
