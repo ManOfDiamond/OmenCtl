@@ -269,14 +269,24 @@ impl FanService {
                 let mut p = Vec::new();
                 if let Ok(entries) = glob("/sys/class/hwmon/hwmon*/temp*_input") {
                     for entry in entries.filter_map(Result::ok) {
-                        let mut is_dgpu = false;
-                        if let Ok(real_path) = std::fs::canonicalize(&entry) {
-                            let s = real_path.to_string_lossy();
-                            if s.contains("0000:01:00.0") || s.contains("nvidia") || s.contains("nouveau") {
-                                is_dgpu = true;
+                        let is_dgpu = if let Some(parent) = entry.parent() {
+                            let name = std::fs::read_to_string(parent.join("name")).unwrap_or_default();
+                            let name = name.trim().to_lowercase();
+                            if name.contains("nvidia") || name.contains("nouveau") {
+                                true
+                            } else {
+                                // Match PCI display controller (class 0x03*) from NVIDIA (vendor 0x10de)
+                                let vendor = std::fs::read_to_string(parent.join("device/vendor")).unwrap_or_default();
+                                let class = std::fs::read_to_string(parent.join("device/class")).unwrap_or_default();
+                                vendor.trim().eq_ignore_ascii_case("0x10de") && class.trim().starts_with("0x03")
                             }
+                        } else {
+                            false
+                        };
+
+                        if !is_dgpu {
+                            p.push(entry);
                         }
-                        if !is_dgpu { p.push(entry); }
                     }
                 }
                 p
@@ -288,12 +298,14 @@ impl FanService {
                 if let Ok(val_str) = std::fs::read_to_string(entry) {
                     if let Ok(milli) = val_str.trim().parse::<f64>() {
                         let temp = milli / 1000.0;
-                        if temp > max_temp && temp < 150.0 { max_temp = temp; }
+                        if temp > max_temp && temp < 150.0 {
+                            max_temp = temp;
+                        }
                     }
                 }
             }
 
-            // 2. Factor in dGPU temperature safely
+            // 2. Factor in dGPU temperature safely (returns 0.0 when sleeping or cooling down)
             let gpu_temp = crate::sysmon::get_safe_gpu_temp();
             if gpu_temp > max_temp && gpu_temp < 150.0 {
                 max_temp = gpu_temp;

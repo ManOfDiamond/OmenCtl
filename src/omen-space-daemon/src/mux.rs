@@ -92,10 +92,9 @@ impl MuxService {
                 let status_path = entry.join("status");
                 if let Ok(status) = tokio::fs::read_to_string(&status_path).await {
                     if status.trim() != "connected" { continue; }
-                    let driver_path = entry.join("device/device/driver");
-                    if let Ok(target) = tokio::fs::read_link(&driver_path).await {
-                        let target_str = target.to_string_lossy().to_lowercase();
-                        if target_str.contains("nvidia") || target_str.contains("nouveau") {
+                    let vendor_path = entry.join("device/device/vendor");
+                    if let Ok(vendor) = tokio::fs::read_to_string(&vendor_path).await {
+                        if vendor.trim().to_lowercase() == "0x10de" {
                             return "discrete".to_string();
                         }
                     }
@@ -103,37 +102,45 @@ impl MuxService {
             }
         }
 
-        // 2. Sysfs driver check (replaces lspci -D to prevent waking dGPU from D3cold)
-        let mut has_nvidia = false;
-        let mut has_igpu = false;
-        
-        for driver in &["nvidia", "nouveau"] {
-            if let Ok(entries) = glob(&format!("/sys/bus/pci/drivers/{}/*", driver)) {
-                for entry in entries.filter_map(Result::ok) {
-                    if entry.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.contains(':')) {
-                        has_nvidia = true;
-                    }
+        // 2. Passive sysfs check (replaces lspci -D to prevent waking dGPU from D3cold)
+    let mut has_nvidia = false;
+    let mut has_igpu = false;
+
+    if let Ok(entries) = std::fs::read_dir("/sys/bus/pci/devices") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let class = std::fs::read_to_string(path.join("class")).unwrap_or_default();
+            let class = class.trim();
+
+            // Check for display controllers: 0x030000 (VGA) or 0x030200 (3D Controller)
+            if class.starts_with("0x03") {
+                let vendor = std::fs::read_to_string(path.join("vendor")).unwrap_or_default();
+                let vendor = vendor.trim().to_lowercase();
+
+                if vendor == "0x10de" {
+                    has_nvidia = true;
+                } else if vendor == "0x1002" || vendor == "0x8086" {
+                    // AMD (0x1002) or Intel (0x8086)
+                    has_igpu = true;
                 }
             }
         }
-        for driver in &["amdgpu", "i915", "xe"] {
-            if let Ok(entries) = glob(&format!("/sys/bus/pci/drivers/{}/*", driver)) {
-                for entry in entries.filter_map(Result::ok) {
-                    if entry.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.contains(':')) {
-                        has_igpu = true;
-                    }
-                }
-            }
-        }
-        
-        if has_nvidia && !has_igpu { return "discrete".to_string(); }
-        if has_nvidia && has_igpu  { return "hybrid".to_string(); }
+    }
+
+    if has_nvidia && has_igpu {
+        return "hybrid".to_string();
+    } else if has_nvidia {
+        return "discrete".to_string();
+    } else if has_igpu {
+        return "integrated".to_string();
+    }
 
         "unknown".to_string()
     }
 
     /// Enumerate connected displays with GPU vendor — mirrors Python _get_displays().
     async fn get_displays() -> Vec<serde_json::Value> {
+        let vendors_map = [("0x10de", "NVIDIA"), ("0x8086", "Intel"), ("0x1002", "AMD")];
         let mut result = Vec::new();
 
         if let Ok(entries) = glob("/sys/class/drm/card[0-9]*-*") {
@@ -141,26 +148,20 @@ impl MuxService {
                 let status_path = entry.join("status");
                 if let Ok(status) = tokio::fs::read_to_string(&status_path).await {
                     if status.trim() != "connected" { continue; }
-                    let driver_path = entry.join("device/device/driver");
-                    let mut gpu_vendor = "Unknown";
-                    if let Ok(target) = tokio::fs::read_link(&driver_path).await {
-                        let target_str = target.to_string_lossy().to_lowercase();
-                        if target_str.contains("nvidia") || target_str.contains("nouveau") {
-                            gpu_vendor = "NVIDIA";
-                        } else if target_str.contains("i915") || target_str.contains("xe") {
-                            gpu_vendor = "Intel";
-                        } else if target_str.contains("amdgpu") || target_str.contains("radeon") {
-                            gpu_vendor = "AMD";
-                        }
-                    }
-
-                    if let Some(name) = entry.file_name().and_then(|n| n.to_str()) {
-                        let disp_name = name.split('-').skip(1).collect::<Vec<_>>().join("-");
-                        result.push(serde_json::json!({
-                            "display": disp_name,
-                            "gpu": gpu_vendor
-                        }));
-                    }
+                    let vendor_path = entry.join("device/device/vendor");
+                    let vendor_str = tokio::fs::read_to_string(&vendor_path).await
+                        .map(|s| s.trim().to_lowercase())
+                        .unwrap_or_default();
+                    let gpu_name = vendors_map.iter()
+                        .find(|(id, _)| vendor_str == *id)
+                        .map(|(_, name)| *name)
+                        .unwrap_or("Unknown GPU");
+                    let disp_name = entry.file_name()
+                        .and_then(|n| n.to_str())
+                        .and_then(|s| s.splitn(2, '-').nth(1))
+                        .unwrap_or("unknown")
+                        .to_string();
+                    result.push(serde_json::json!({ "display": disp_name, "gpu": gpu_name }));
                 }
             }
         }
