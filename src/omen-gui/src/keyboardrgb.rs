@@ -530,7 +530,7 @@ fn build_interactive_keyboard(
                 for (k, btn) in b_map_anim.borrow().iter() {
                     let x_pos = *key_x_pos.get(k).unwrap_or(&0);
                     let delay = (x_pos as f64) * 0.15 * (duration / 5.0);
-                    css.push_str(&format!("#{} {{ animation: kb_wave {:.1}s infinite linear -{:.2}s; opacity: 1.0; }}\n", btn.widget_name(), duration, delay));
+                    css.push_str(&format!("#{} {{ animation: kb_wave {:.1}s infinite linear {:.2}s; opacity: 1.0; }}\n", btn.widget_name(), duration, delay));
                 }
             },
             "audio" => {
