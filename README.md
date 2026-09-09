@@ -1,54 +1,54 @@
 <div align="center">
-<img src="images/omenspace.png" alt="OMENSpace Logo" width="150">
+  <img src="images/omenspace.png" alt="OMEN Space Logo" width="120" />
 
-**Next-Generation Linux Control Center for HP Omen, Victus & Transcend Laptops**  
-*An open-source, Rust-powered GTK4 suite for managing performance profiles, custom fan curves, RGB lighting, Ryzen SMU tuning, and hardware limits seamlessly on Linux.*
+  # OMEN Space
 
-[![Version: 2.0.3](https://img.shields.io/badge/Release-v2.0.3-blue.svg)](https://github.com/yunusemreyl/omen-space/releases)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-green.svg)](LICENSE)
-[![Platform: Linux](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)]()
-[![Built with Rust](https://img.shields.io/badge/Language-Rust-orange.svg)]()
-[![UI: GTK4 & Libadwaita](https://img.shields.io/badge/UI-GTK4%20%26%20Libadwaita-blueviolet.svg)]()
+  **The ultimate, lightweight Linux control center for HP Omen, Victus & Transcend.**  
+  *Written entirely in Rust for zero-overhead, native GTK4 performance.*
 
----
-
-### [ ⚡ Quick Install ](#quick-install) &nbsp;•&nbsp; [ 📸 Screenshots ](#screenshots) &nbsp;•&nbsp; [ ✨ Features ](#features) &nbsp;•&nbsp; [ 🌟 Rust vs Legacy ](#evolution) &nbsp;•&nbsp; [ 🏗️ Architecture ](#architecture) &nbsp;•&nbsp; [ 📦 Packages ](#packages)
-
----
-
+  [![Version](https://img.shields.io/badge/Release-v2.0.3-blue.svg?style=flat-square)](https://github.com/yunusemreyl/omen-space/releases)
+  [![License](https://img.shields.io/badge/License-GPL%203.0-green.svg?style=flat-square)](LICENSE)
+  [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg?style=flat-square)]()
+  [![Built with Rust](https://img.shields.io/badge/Language-Rust-orange.svg?style=flat-square)]()
 </div>
 
-<a id="quick-install"></a>
+---
+
+## ✨ Features
+
+OMEN Space provides everything you need to unlock the full potential of your laptop on Linux, without the bloat.
+
+- 🎛️ **Fan & Thermal Mastery:** Create custom Fan curve splines for near-silent operation without thermal throttling. Includes a dedicated **Fan Cleaning Mode**.
+- ⚡ **Performance Profiles:** Seamlessly switch between `power-saver`, `balanced`, and `performance` ACPI/WMI modes.
+- 🚀 **Ryzen SMU & Undervolting:** Direct MSR-based undervolting, TCC offset control, GPU TGP limits, and AMD Ryzen SMU tuning.
+- 🎮 **MUX Switch:** Native Optimus / dGPU routing switching for maximum gaming performance.
+- 🌈 **RGB Studio:** Hardware-accelerated 4-Zone or Per-Key keyboard lighting with wave, breathing, cycle, and static effects.
+- 🔄 **Smart BIOS Checker:** Automatically checks HP servers for your specific motherboard's latest firmware.
+
+---
+
 ## ⚡ Quick Install
 
-Install OMENSpace in one step. Automatically detects your package manager, resolves dependencies, compiles with release optimizations, configures systemd & D-Bus, and loads the kernel module.
+The easiest way to install OMEN Space is via our 1-line web installer. It detects your distro, handles dependencies, and compiles everything automatically.
 
-#### 🚀 1-Line Web Installer *(Recommended)*
 ```bash
 curl -sSL https://raw.githubusercontent.com/yunusemreyl/omen-space/main/install.sh | sudo bash
 ```
-> 💡 *The installer lets you choose between **🟢 Stable** (Latest Official Release) and **🟡 Canary** (Bleeding-edge `main` branch with the newest commits). You can also pre-select your channel directly:*
-> ```bash
-> # Direct Stable install
-> curl -sSL https://raw.githubusercontent.com/yunusemreyl/omen-space/main/install.sh | sudo bash -s -- --stable
->
-> # Direct Canary (main branch) install
-> curl -sSL https://raw.githubusercontent.com/yunusemreyl/omen-space/main/install.sh | sudo bash -s -- --canary
-> ```
+
+> **Pro Tip:** To install the bleeding-edge canary version directly, append `--canary`:  
+> `curl -sSL https://raw.githubusercontent.com/yunusemreyl/omen-space/main/install.sh | sudo bash -s -- --canary`
 
 <details>
-<summary><b>📦 Alternative Install Options (Git Clone, Arch Linux, NixOS)</b></summary>
-<br>
+<summary><b>📦 Alternative Installation Methods (Manual, AUR, NixOS)</b></summary>
 
-**Via Git Clone (Ubuntu / Debian, Fedora / RHEL, Arch, openSUSE):**
+**Via Git Clone (Ubuntu/Debian, Fedora, Arch, openSUSE):**
 ```bash
 git clone https://github.com/yunusemreyl/omen-space.git
 cd omen-space
-chmod +x setup.sh
 sudo ./setup.sh install
 ```
 
-**Arch Linux (AUR / PKGBUILD):**
+**Arch Linux (AUR):**
 ```bash
 git clone https://github.com/yunusemreyl/omen-space.git
 cd omen-space
@@ -59,149 +59,55 @@ makepkg -si
 ```bash
 nix profile install github:yunusemreyl/omen-space
 ```
-
-**System Management:**
-```bash
-sudo ./setup.sh update      # Pulls latest changes, rebuilds, and restarts daemon
-sudo ./setup.sh uninstall   # Cleanly purges all binaries, services, and DKMS drivers
-```
-
 </details>
 
 ---
 
-<a id="screenshots"></a>
 ## 📸 Screenshots
 
-### 🌟 Core Highlights *(Click any image for full resolution)*
-
-| 🎛️ **Custom Fan Curves & Telemetry** | ⚡ **Performance & Thermal Profiles** |
-| :---: | :---: |
-| <a href="images/perf.png"><img src="images/perf.png" alt="Fan Curve Splines & Telemetry" width="100%"></a> | <a href="images/profile.png"><img src="images/profile.png" alt="Thermal Profiles" width="100%"></a> |
-| *Real-time spline curve editor with moving average deadband* | *Switch between Power Saver, Balanced, and Performance modes* |
-
-| 🌈 **RGB Keyboard Lighting Studio** | 🚀 **Ryzen SMU & Undervolting** |
-| :---: | :---: |
-| <a href="images/rgb.png"><img src="images/rgb.png" alt="RGB Keyboard Lighting" width="100%"></a> | <a href="images/undervolt.png"><img src="images/undervolt.png" alt="Ryzen SMU & Undervolting" width="100%"></a> |
-| *4-Zone & Per-Key animated effects (Breathing, Wave, Cycle)* | *Direct MSR undervolt, TCC offsets, GPU TGP limits, and SMU power limits* |
+<p align="center">
+  <img src="images/perf.png" width="48%" alt="Fan Curve Editor" />
+  <img src="images/profile.png" width="48%" alt="Thermal Profiles" />
+</p>
+<p align="center">
+  <img src="images/rgb.png" width="48%" alt="RGB Settings" />
+  <img src="images/undervolt.png" width="48%" alt="Ryzen Undervolting" />
+</p>
 
 <details>
-<summary><b>🔍 View Advanced Controls & System Tools (MUX Switch, Diagnostics, BIOS Updater, Settings, CLI)</b></summary>
+<summary><b>🔍 View More Screenshots (MUX, Diagnostics, Settings)</b></summary>
 <br>
-
-| 🎮 **GPU MUX Switch (Hybrid / Discrete)** | 🩺 **Hardware Diagnostics** |
-| :---: | :---: |
-| <a href="images/mux.png"><img src="images/mux.png" alt="MUX Switch" width="100%"></a> | <a href="images/diagno.png"><img src="images/diagno.png" alt="Diagnostics" width="100%"></a> |
-| *Native Optimus / dGPU display routing control* | *Real-time thermals, clock rates, battery health, and sensor telemetry* |
-
-| 🔄 **HP BIOS Updater** | ⚙️ **Settings & Preferences** |
-| :---: | :---: |
-| <a href="images/updater.png"><img src="images/updater.png" alt="BIOS Updater" width="100%"></a> | <a href="images/settings.png"><img src="images/settings.png" alt="Settings" width="100%"></a> |
-| *Automatic DMI-based HP server queries for motherboard firmware updates* | *Startup behavior, daemon preferences, polling intervals, and tray toggles* |
-
-| 💻 **High-Performance Command Line Interface** | |
-| :---: | :---: |
-| <a href="images/cli.png"><img src="images/cli.png" alt="CLI" width="100%"></a> | |
-| *Fast, scriptable hardware control directly from your terminal* | |
-
+<p align="center">
+  <img src="images/mux.png" width="48%" alt="MUX Switch" />
+  <img src="images/diagno.png" width="48%" alt="Diagnostics" />
+</p>
+<p align="center">
+  <img src="images/settings.png" width="48%" alt="Settings" />
+  <img src="images/cli.png" width="48%" alt="CLI" />
+</p>
 </details>
 
 ---
 
-<a id="features"></a>
-## ⚡ Features at a Glance
+## 🏗️ Architecture
 
-* 🎛️ **Fan & Thermal Mastery:** Create custom Fan curve splines with a 15-sample moving average deadband for near-silent operation without thermal throttling. Includes a dedicated **Fan Cleaning Mode** to blow out trapped dust.
-* ⚡ **Power & Performance Switching:** Seamlessly toggle between `power-saver`, `balanced`, and `performance` hardware profiles via ACPI and WMI.
-* 🚀 **Ryzen SMU & Undervolting:** Direct MSR-based undervolting, TCC offset control, GPU TGP limits, and AMD Ryzen SMU tuning for maximum thermal headroom.
-* 🎮 **MUX Switch Control:** Native interface for Optimus / dGPU routing switching (uses undocumented WMI payload `0x52`).
-* 🌈 **RGB Keyboard Lighting:** Configure your 4-Zone or Per-Key keyboard backlighting with wave, breathing, cycle, and static colors. Hardware accelerated via sysfs.
-* 🎯 **Game & App Automation:** Define custom power limits and fan curves for individual games (Steam, Lutris, Flatpak). Zero-fork process detection doesn't waste CPU cycles.
-* 🔄 **Smart BIOS Checker:** Automatically checks HP servers for the latest BIOS update for your specific motherboard (DMI).
-* 💻 **CLI & System Tray:** Control profiles and fan speeds from the terminal (`omen-cli`) or desktop panel applet (`omen-tray`).
+OMEN Space is a complete rewrite of the legacy Python *OmenCtl*, moving to **Rust** to achieve a ~3MB footprint, less than 5MB of RAM usage, and instant responsiveness.
+
+- **`omen-space-daemon`**: The backend. Runs as a systemd service (root), managing WMI, ACPI, Sysfs, and MSR interactions over secure D-Bus.
+- **`omen-gui`**: A beautifully fast GTK4 + Libadwaita frontend running in user-space.
+- **`omen-tray`**: A lightweight desktop panel applet for quick profile toggling.
+- **`omen-cli`**: A fast scriptable terminal interface.
+- **`hp-omen-extra`**: The underlying DKMS kernel driver extending standard kernel capabilities.
 
 ---
 
-<a id="evolution"></a>
-## 🌟 The Evolution: From OmenCtl to OMENSpace
+## 👨‍💻 Credits & License
 
-**OMENSpace** is a complete, ground-up rewrite of the legacy Python-based *OmenCtl* project. We transitioned from Python to **Rust** to deliver zero-cost abstractions, maximum memory safety, and native performance.
+OMEN Space is licensed under the **GPL-3.0 License** and is driven by an incredible community.
 
-### Why the upgrade?
-| Feature / Metric | Legacy OmenCtl (Python) | **OMENSpace (Rust)** |
-| :--- | :--- | :--- |
-| **Performance & RAM** | ~40MB RAM (Python interpreter overhead) | **~2.8MB binary, < 5MB RAM** (Zero overhead) |
-| **Architecture** | Sync loops, heavy `subprocess` usage | **Tokio Async**, Zero-fork `/proc` & Sysfs telemetry |
-| **GUI Framework** | Python GTK Bindings (Sluggish) | **Native GTK4 & Libadwaita** (Extremely fast & responsive) |
-| **Inter-Process Comm** | `pydbus` | `zbus` (Pure Rust, highly concurrent) |
-| **Hardware Tuning** | Standard ACPI Power Profiles | **Ryzen SMU Tuning, Undervolting & Fan Cleaning Mode!** |
+- **[yunusemreyl](https://github.com/yunusemreyl)** - Lead Developer
+- **[tuxov](https://github.com/tuxov)** - Kernel Module Lead
 
----
+Thanks to all our contributors: [@CodesRahul96](https://github.com/CodesRahul96), [@xcellsior](https://github.com/xcellsior), [@TitoTFP](https://github.com/TitoTFP), [@SafSaf0999](https://github.com/SafSaf0999), [@yijean34-source](https://github.com/yijean34-source), and the projects `omencore` & `omen-rgb-keyboard`.
 
-<a id="architecture"></a>
-## 🏗️ Architecture Overview
-
-The OMENSpace stack is split into four distinct Rust crates and a kernel module:
-
-1. **`omen-space-daemon` (The Backend)**
-   - Runs as a systemd service (`omen-space-daemon.service`) with root privileges.
-   - Manages direct hardware interaction via WMI, ACPI, Sysfs, and MSR.
-   - Exposes hardware control safely over **D-Bus** (`org.hp.omen.*`).
-
-2. **`omen-gui` (The Frontend)**
-   - A modern graphical interface built using **GTK4** and **Libadwaita**.
-   - Runs in user-space without requiring `sudo`.
-   - Communicates with the daemon exclusively via D-Bus (`zbus` crate).
-
-3. **`omen-cli` (Command Line Interface)**
-   - A fast terminal tool for users who prefer the command line or want to script hardware changes.
-
-4. **`omen-tray` (System Tray)**
-   - A lightweight background applet providing quick access to thermal profiles and fan modes from your desktop panel.
-
-5. **`hp-omen-extra` (Kernel Module)**
-   - Custom DKMS driver providing extended WMI and sysfs interfaces for fans, thermal sensors, and RGB control.
-
----
-
-<a id="packages"></a>
-## 📦 Installation & Package Management
-
-### Detailed Setup Script Options
-The `setup.sh` script automates compilation with `LTO` and `opt-level=z` optimizations:
-
-```bash
-sudo ./setup.sh install    # Cleans legacy omenctl, builds Rust binaries, installs system files & driver
-sudo ./setup.sh update     # Pulls latest git changes, rebuilds, and restarts the daemon
-sudo ./setup.sh uninstall  # Completely removes OMENSpace, daemon, and the DKMS kernel module
-```
-
-### Supported Distributions
-- **Fedora / RHEL:** Uses `dnf` to automatically install build tools, GTK4, Libadwaita, and kernel headers.
-- **Ubuntu / Debian / Pop!_OS:** Uses `apt-get` to install dependencies and kernel development packages.
-- **Arch Linux / Manjaro:** Uses `pacman` to install build dependencies, or install directly using the provided `PKGBUILD` (`makepkg -si`).
-- **NixOS:** Provided `flake.nix` enables simple installation via `nix profile install github:yunusemreyl/omen-space`.
-- **OpenSUSE:** Uses `zypper` to install dependencies and kernel development packages.
-
----
-
-## 👨‍💻 Credits & Contributors
-
-OMENSpace wouldn't exist without its amazing open-source community.
-
-* **[yunusemreyl](https://github.com/yunusemreyl)** - Lead Developer
-* **[tuxov](https://github.com/tuxov)** - Kernel Module Lead
-* **[theantipopau](https://github.com/theantipopau/omencore)** - Inspiration and reference from omencore.
-* **[OmenLinux/omen-rgb-keyboard](https://github.com/OmenLinux/omen-rgb-keyboard)** - Kernel module providing hardware-accelerated RGB lighting effects.
-
-### Top Contributors
-[@CodesRahul96](https://github.com/CodesRahul96), [@xcellsior](https://github.com/xcellsior), [@TitoTFP](https://github.com/TitoTFP), [@SafSaf0999](https://github.com/SafSaf0999), [@yijean34-source](https://github.com/yijean34-source).
-
-*(For the full list of community members and bug testers, check the commit history—thank you all!)*
-
----
-
-## ⚖️ License
-OMENSpace is licensed under the **GNU General Public License v3.0** (GPL-3.0). See the [LICENSE](LICENSE) file for details.
-
-*OMENSpace is an independent open-source project and is **NOT** officially affiliated with, authorized, or endorsed by **Hewlett-Packard (HP)**.*
+*Disclaimer: OMEN Space is an independent project and is NOT affiliated with or endorsed by HP.*
