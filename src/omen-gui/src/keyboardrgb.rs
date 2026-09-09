@@ -40,6 +40,10 @@ fn get_active_keyboard_mode(detected: KeyboardMode) -> KeyboardMode {
 }
 
 fn get_zone_for_key(name: &str) -> i32 {
+    if name == "zone_0" { return 1; }
+    if name == "zone_1" { return 2; }
+    if name == "zone_2" { return 3; }
+    if name == "zone_3" { return 4; }
     match name {
         "W" | "A" | "S" | "D" => 4,
         "Esc" | "F1" | "F2" | "F3" | "F4" | "~" | "1" | "2" | "3" | "4" | 
@@ -124,11 +128,11 @@ fn build_interactive_keyboard(
 
     let layout = vec![
         vec![("Esc", 1.0), ("F1", 1.0), ("F2", 1.0), ("F3", 1.0), ("F4", 1.0), ("F5", 1.0), ("F6", 1.0), ("F7", 1.0), ("F8", 1.0), ("F9", 1.0), ("F10", 1.0), ("F11", 1.0), ("F12", 1.0), ("PrtSc", 1.0), ("ScrLk", 1.0), ("Pause", 1.0)],
-        vec![("~", 1.0), ("1", 1.0), ("2", 1.0), ("3", 1.0), ("4", 1.0), ("5", 1.0), ("6", 1.0), ("7", 1.0), ("8", 1.0), ("9", 1.0), ("0", 1.0), ("-", 1.0), ("=", 1.0), ("Backspace", 2.0), ("Ins", 1.0), ("Home", 1.0), ("PgUp", 1.0), ("Num", 1.0), ("/", 1.0), ("*", 1.0), ("-", 1.0)],
-        vec![("Tab", 1.5), ("Q", 1.0), ("W", 1.0), ("E", 1.0), ("R", 1.0), ("T", 1.0), ("Y", 1.0), ("U", 1.0), ("I", 1.0), ("O", 1.0), ("P", 1.0), ("[", 1.0), ("]", 1.0), ("\\", 1.5), ("Del", 1.0), ("End", 1.0), ("PgDn", 1.0), ("7", 1.0), ("8", 1.0), ("9", 1.0), ("+", 1.0)],
-        vec![("Caps", 1.8), ("A", 1.0), ("S", 1.0), ("D", 1.0), ("F", 1.0), ("G", 1.0), ("H", 1.0), ("J", 1.0), ("K", 1.0), ("L", 1.0), (";", 1.0), ("'", 1.0), ("Enter", 2.2), ("4", 1.0), ("5", 1.0), ("6", 1.0)],
-        vec![("Shift", 2.4), ("Z", 1.0), ("X", 1.0), ("C", 1.0), ("V", 1.0), ("B", 1.0), ("N", 1.0), ("M", 1.0), (",", 1.0), (".", 1.0), ("/", 1.0), ("Shift_R", 2.6), ("Up", 1.0), ("1", 1.0), ("2", 1.0), ("3", 1.0), ("Ent", 1.0)],
-        vec![("Ctrl", 1.5), ("Win", 1.2), ("Alt", 1.2), ("Space", 6.0), ("Alt_R", 1.2), ("Fn", 1.2), ("Menu", 1.2), ("Ctrl_R", 1.5), ("Left", 1.0), ("Down", 1.0), ("Right", 1.0), ("0", 2.0), (".", 1.0)]
+        vec![("~", 1.0), ("1", 1.0), ("2", 1.0), ("3", 1.0), ("4", 1.0), ("5", 1.0), ("6", 1.0), ("7", 1.0), ("8", 1.0), ("9", 1.0), ("0", 1.0), ("-", 1.0), ("=", 1.0), ("Backspace", 2.0), ("Ins", 1.0), ("Home", 1.0), ("PgUp", 1.0), ("Num", 1.0), ("/", 1.0), ("*", 1.0), ("-_num", 1.0)],
+        vec![("Tab", 1.5), ("Q", 1.0), ("W", 1.0), ("E", 1.0), ("R", 1.0), ("T", 1.0), ("Y", 1.0), ("U", 1.0), ("I", 1.0), ("O", 1.0), ("P", 1.0), ("[", 1.0), ("]", 1.0), ("\\", 1.5), ("Del", 1.0), ("End", 1.0), ("PgDn", 1.0), ("7_num", 1.0), ("8_num", 1.0), ("9_num", 1.0), ("+", 1.0)],
+        vec![("Caps", 1.8), ("A", 1.0), ("S", 1.0), ("D", 1.0), ("F", 1.0), ("G", 1.0), ("H", 1.0), ("J", 1.0), ("K", 1.0), ("L", 1.0), (";", 1.0), ("'", 1.0), ("Enter", 2.2), ("4_num", 1.0), ("5_num", 1.0), ("6_num", 1.0)],
+        vec![("Shift", 2.4), ("Z", 1.0), ("X", 1.0), ("C", 1.0), ("V", 1.0), ("B", 1.0), ("N", 1.0), ("M", 1.0), (",", 1.0), (".", 1.0), ("/", 1.0), ("Shift_R", 2.6), ("Up", 1.0), ("1_num", 1.0), ("2_num", 1.0), ("3_num", 1.0), ("Ent", 1.0)],
+        vec![("Ctrl", 1.5), ("Win", 1.2), ("Alt", 1.2), ("Space", 6.0), ("Alt_R", 1.2), ("Fn", 1.2), ("Menu", 1.2), ("Ctrl_R", 1.5), ("Left", 1.0), ("Down", 1.0), ("Right", 1.0), ("0_num", 2.0), ("._num", 1.0)]
     ];
     let base_width = 38;
     let height = 36;
@@ -137,24 +141,53 @@ fn build_interactive_keyboard(
     
     let mut key_x_pos = HashMap::new();
     let mut global_idx = 0;
-    for row_keys in &layout {
-        let row_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).build();
-        let mut x_idx = 0;
-        for (name, size_mult) in row_keys {
-            let width = (base_width as f32 * size_mult) as i32;
-            let display_name = if name.ends_with("_R") { &name[..name.len()-2] } else { name };
-            let key_btn = gtk::Button::builder().label(display_name).build();
-            key_btn.set_size_request(width, height);
-            key_btn.set_widget_name(&format!("key_{}", global_idx));
-            key_btn.add_css_class("kb-key");
-            
-            buttons_map.borrow_mut().insert(name.to_string(), key_btn.clone());
-            key_x_pos.insert(name.to_string(), x_idx);
-            row_box.append(&key_btn);
-            global_idx += 1;
-            x_idx += 1;
+    
+    if detected_mode == KeyboardMode::Victus1Zone {
+        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).margin_top(24).margin_bottom(24).halign(gtk::Align::Center).build();
+        let btn = gtk::Button::builder().label(i18n::t("kb_color_map")).width_request(500).height_request(160).build();
+        btn.add_css_class("kb-key");
+        btn.set_widget_name("zone_all");
+        buttons_map.borrow_mut().insert("zone_all".to_string(), btn.clone());
+        visualizer_box.append(&btn);
+        kb_card.append(&visualizer_box);
+    } else if detected_mode == KeyboardMode::Omen4Zone {
+        let visualizer_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(12).margin_top(24).margin_bottom(24).halign(gtk::Align::Center).build();
+        let zones = ["Left", "Center", "Right", "WASD"];
+        let names = ["zone_0", "zone_1", "zone_2", "zone_3"];
+        for i in 0..4 {
+            let btn = gtk::Button::builder().label(zones[i]).width_request(120).height_request(160).build();
+            btn.add_css_class("kb-key");
+            btn.set_widget_name(names[i]);
+            buttons_map.borrow_mut().insert(names[i].to_string(), btn.clone());
+            visualizer_box.append(&btn);
         }
-        kb_card.append(&row_box);
+        kb_card.append(&visualizer_box);
+    } else {
+        for row_keys in &layout {
+            let row_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(4).build();
+            let mut x_idx = 0;
+            for (name, size_mult) in row_keys {
+                let width = (base_width as f32 * size_mult) as i32;
+                let display_name = if name.ends_with("_R") { 
+                    &name[..name.len()-2] 
+                } else if name.ends_with("_num") {
+                    &name[..name.len()-4]
+                } else { 
+                    name 
+                };
+                let key_btn = gtk::Button::builder().label(display_name).build();
+                key_btn.set_size_request(width, height);
+                key_btn.set_widget_name(&format!("key_{}", global_idx));
+                key_btn.add_css_class("kb-key");
+                
+                buttons_map.borrow_mut().insert(name.to_string(), key_btn.clone());
+                key_x_pos.insert(name.to_string(), x_idx);
+                row_box.append(&key_btn);
+                global_idx += 1;
+                x_idx += 1;
+            }
+            kb_card.append(&row_box);
+        }
     }
     
     let b_map_clone = buttons_map.clone();
