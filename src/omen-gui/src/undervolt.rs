@@ -10,21 +10,22 @@ use crate::i18n;
    ───────────────────────────────────────────────────────────── */
 
 fn is_cpu_locked(cpu: &str) -> bool {
-    let cpu = cpu.to_uppercase();
-    if cpu.contains("AMD") { return false; } // AMD handled by ryzenadj in daemon
-    if !cpu.contains("INTEL") { return false; }
+    let name_part = cpu.split('·').next().unwrap_or(cpu).to_uppercase();
+    if name_part.contains("AMD") { return false; } // AMD handled by ryzenadj in daemon
+    if !name_part.contains("INTEL") { return false; }
     
     // Check for 12, 13, 14th gen
-    if cpu.contains("12") || cpu.contains("13") || cpu.contains("14") {
-        if cpu.contains("HK") || cpu.contains("HX") {
+    if name_part.contains("-12") || name_part.contains("-13") || name_part.contains("-14") 
+        || name_part.contains(" 12") || name_part.contains(" 13") || name_part.contains(" 14") {
+        if name_part.contains("HK") || name_part.contains("HX") {
             return false;
         }
-        if cpu.contains("H") || cpu.contains("P") || cpu.contains("U") {
+        if name_part.contains("H") || name_part.contains("P") || name_part.contains("U") {
             return true;
         }
     }
     // Check for Core Ultra
-    if cpu.contains("ULTRA") {
+    if name_part.contains("ULTRA") {
         return true;
     }
     false
@@ -311,8 +312,6 @@ pub fn build_page() -> gtk::Box {
     let warn_title_clone = warn_title.clone();
     let warn_desc_clone = warn_desc.clone();
     let volt_group_clone = volt_group.clone();
-    let pwr_group_clone = pwr_group.clone();
-    let actions_box_clone = actions_box.clone();
 
     glib::spawn_future_local(async move {
         // First check CPU lock
@@ -329,8 +328,7 @@ pub fn build_page() -> gtk::Box {
                     badge_load.set_css_classes(&["badge-err"]);
                     
                     volt_group_clone.set_sensitive(false);
-                    pwr_group_clone.set_sensitive(false);
-                    actions_box_clone.set_sensitive(false);
+                    // allow power limits and TCC offset for locked CPUs
                 }
             }
         }

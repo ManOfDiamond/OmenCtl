@@ -85,7 +85,7 @@ impl RgbHardware {
         let Some(ref base) = self.driver_path else { return; };
         if zone > 7 { return; }
 
-        let actual_zone = if self.zone_count == 4 {
+        let actual_zone = if self.is_new_driver && self.zone_count == 4 {
             match zone {
                 0 => 2, // Left
                 1 => 1, // Middle

@@ -225,6 +225,11 @@ static const char *const victus_thermal_profile_boards[] = {
 /* DMI board names of Victus 16-r and Victus 16-s laptops */
 static const struct dmi_system_id victus_s_thermal_profile_boards[] __initconst = {
 	{
+		/* 878A: OMEN Laptop 15-ek0xxx */
+		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "878A")},
+		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
+	},
+	{
 		.matches    = {DMI_MATCH(DMI_BOARD_NAME, "8902")},
 		.driver_data = (void *)&omen_v1_legacy_thermal_params,
 	},
