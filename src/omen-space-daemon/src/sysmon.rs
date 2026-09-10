@@ -358,6 +358,39 @@ fn check_nvidia_state() -> Option<bool> {
     }
     None
 }
+
+struct GpuMetrics {
+    has_clients: bool,
+    temp: Option<i32>,
+    power: Option<f64>,
+}
+
+fn fetch_gpu_metrics_with_timeout() -> Option<GpuMetrics> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if let Ok(nvml) = nvml_wrapper::Nvml::init() {
+            if let Ok(device) = nvml.device_by_index(0) {
+                let gfx = device.running_graphics_processes().map(|v| v.len()).unwrap_or(0);
+                let comp = device.running_compute_processes().map(|v| v.len()).unwrap_or(0);
+                let has_clients = (gfx + comp) > 0;
+                
+                let mut temp = None;
+                let mut power = None;
+                
+                if has_clients {
+                    if let Ok(t) = device.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu) {
+                        temp = Some(t as i32);
+                    }
+                    if let Ok(p) = device.power_usage() {
+                        power = Some(p as f64 / 1000.0);
+                    }
+                }
+                let _ = tx.send(GpuMetrics { has_clients, temp, power });
+            }
+        }
+    });
+    rx.recv_timeout(std::time::Duration::from_millis(500)).ok()
+}
 pub fn get_safe_gpu_temp() -> f64 {
     let nvidia_state = check_nvidia_state();
     let is_nvidia_awake = nvidia_state.unwrap_or(false);
@@ -380,24 +413,23 @@ pub fn get_safe_gpu_temp() -> f64 {
     let mut has_active_clients = false;
     let mut gpu_temp = 0.0;
 
-    // Check for actual running 3D or compute processes
-    if let Ok(nvml) = nvml_wrapper::Nvml::init() {
-        if let Ok(device) = nvml.device_by_index(0) {
-            let gfx = device.running_graphics_processes().map(|v| v.len()).unwrap_or(0);
-            let comp = device.running_compute_processes().map(|v| v.len()).unwrap_or(0);
-            has_active_clients = (gfx + comp) > 0;
-
-            if has_active_clients {
-                // Active game/render client: clear cooldown and sample real temperature
-                {
-                    let mut guard = GPU_IDLE_COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
-                    *guard = None;
-                }
-                if let Ok(temp) = device.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu) {
-                    gpu_temp = temp as f64;
-                }
+    // Check for actual running 3D or compute processes with timeout
+    // to prevent hanging Tokio's blocking pool during NVIDIA power state transitions
+    if let Some(metrics) = fetch_gpu_metrics_with_timeout() {
+        has_active_clients = metrics.has_clients;
+        if has_active_clients {
+            // Active game/render client: clear cooldown and sample real temperature
+            {
+                let mut guard = GPU_IDLE_COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+            }
+            if let Some(t) = metrics.temp {
+                gpu_temp = t as f64;
             }
         }
+    } else {
+        // NVML timeout (likely hanging in D3cold transition). Return 0.0 safely.
+        return 0.0;
     }
 
     if !has_active_clients {
@@ -559,25 +591,20 @@ pub fn fetch_system_stats() -> SystemStats {
         // 3. GPU is active AND cooldown expired. Safe to sample NVML for active processes.
         let mut has_active_clients = false;
 
-        if let Ok(nvml) = nvml_wrapper::Nvml::init() {
-            if let Ok(device) = nvml.device_by_index(0) {
-                let gfx = device.running_graphics_processes().map(|v| v.len()).unwrap_or(0);
-                let comp = device.running_compute_processes().map(|v| v.len()).unwrap_or(0);
-                has_active_clients = (gfx + comp) > 0;
+        if let Some(metrics) = fetch_gpu_metrics_with_timeout() {
+            has_active_clients = metrics.has_clients;
+            if has_active_clients {
+                // Workload running: clear cooldown and stream live metrics
+                {
+                    let mut guard = GPU_IDLE_COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
+                    *guard = None;
+                }
 
-                if has_active_clients {
-                    // Workload running: clear cooldown and stream live metrics
-                    {
-                        let mut guard = GPU_IDLE_COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
-                        *guard = None;
-                    }
-
-                    if let Ok(temp) = device.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu) {
-                        stats.gpu_temp = temp as i32;
-                    }
-                    if let Ok(power) = device.power_usage() {
-                        stats.gpu_pwr = power as f64 / 1000.0;
-                    }
+                if let Some(t) = metrics.temp {
+                    stats.gpu_temp = t;
+                }
+                if let Some(p) = metrics.power {
+                    stats.gpu_pwr = p;
                 }
             }
         }
