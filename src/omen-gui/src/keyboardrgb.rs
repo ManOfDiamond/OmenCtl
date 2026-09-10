@@ -118,7 +118,8 @@ pub fn show_color_picker_popover(
 fn build_interactive_keyboard(
     detected_mode: KeyboardMode,
     zone_colors: Rc<RefCell<Vec<String>>>,
-    per_key_colors: Rc<RefCell<Vec<String>>>
+    per_key_colors: Rc<RefCell<Vec<String>>>,
+    mode_row_ref: Rc<RefCell<Option<adw::ComboRow>>>
 ) -> (gtk::Box, Rc<dyn Fn(&str, f64)>, gtk::Box) {
     let kb_card = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -252,7 +253,16 @@ fn build_interactive_keyboard(
     let kc_global = key_colors.clone();
     let zc_global = zone_colors.clone();
     let pk_global = per_key_colors.clone();
+
+    let mode_row_ref_cb = mode_row_ref.clone();
+    let on_color_picked_mode_update = Rc::new(move |mode_val: KeyboardMode| {
+        if let Some(row) = &*mode_row_ref_cb.borrow() {
+            let idx = if mode_val == KeyboardMode::PerKey { 1 } else { 0 };
+            row.set_selected(idx as u32);
+        }
+    });
     
+    let mode_cb_global = on_color_picked_mode_update.clone();
     global_color_btn.connect_clicked(move |btn_ref| {
         let b_map_local = b_map_global.clone();
         let kc_local = kc_global.clone();
@@ -260,8 +270,10 @@ fn build_interactive_keyboard(
         let zc_local = zc_global.clone();
         let pk_local = pk_global.clone();
         let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
+        let mode_cb_local = mode_cb_global.clone();
         
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+            mode_cb_local(current_mode);
             let mut css_str = String::new();
             css_str.push_str(&format!("#global_color_btn {{ background: {}; background-image: none; border: 1px solid rgba(255,255,255,0.4); }}\n", hex));
 
@@ -303,11 +315,15 @@ fn build_interactive_keyboard(
     let dyn_prov_c1 = dyn_provider.clone();
     let b_map_c1 = buttons_map.clone();
     let kc_c1 = key_colors.clone();
+    let mode_cb_c1 = on_color_picked_mode_update.clone();
     c1_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c1.clone();
         let b_map_local = b_map_c1.clone();
         let kc_local = kc_c1.clone();
+        let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
+        let mode_cb_local = mode_cb_c1.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+            mode_cb_local(current_mode);
             crate::daemon_client::set_color_sync(0, hex.clone());
             let map = b_map_local.borrow();
             for (k, _) in map.iter() {
@@ -332,11 +348,15 @@ fn build_interactive_keyboard(
     let dyn_prov_c2 = dyn_provider.clone();
     let b_map_c2 = buttons_map.clone();
     let kc_c2 = key_colors.clone();
+    let mode_cb_c2 = on_color_picked_mode_update.clone();
     c2_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c2.clone();
         let b_map_local = b_map_c2.clone();
         let kc_local = kc_c2.clone();
+        let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
+        let mode_cb_local = mode_cb_c2.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+            mode_cb_local(current_mode);
             crate::daemon_client::set_color_sync(1, hex.clone());
             let map = b_map_local.borrow();
             for (k, _) in map.iter() {
@@ -360,11 +380,15 @@ fn build_interactive_keyboard(
     let dyn_prov_c3 = dyn_provider.clone();
     let b_map_c3 = buttons_map.clone();
     let kc_c3 = key_colors.clone();
+    let mode_cb_c3 = on_color_picked_mode_update.clone();
     c3_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c3.clone();
         let b_map_local = b_map_c3.clone();
         let kc_local = kc_c3.clone();
+        let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
+        let mode_cb_local = mode_cb_c3.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+            mode_cb_local(current_mode);
             crate::daemon_client::set_color_sync(2, hex.clone());
             let map = b_map_local.borrow();
             for (k, _) in map.iter() {
@@ -389,11 +413,15 @@ fn build_interactive_keyboard(
     let dyn_prov_c4 = dyn_provider.clone();
     let b_map_c4 = buttons_map.clone();
     let kc_c4 = key_colors.clone();
+    let mode_cb_c4 = on_color_picked_mode_update.clone();
     c4_btn.connect_clicked(move |btn_ref| {
         let dyn_local = dyn_prov_c4.clone();
         let b_map_local = b_map_c4.clone();
         let kc_local = kc_c4.clone();
+        let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
+        let mode_cb_local = mode_cb_c4.clone();
         show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+            mode_cb_local(current_mode);
             crate::daemon_client::set_color_sync(3, hex.clone());
             let map = b_map_local.borrow();
             for (k, _) in map.iter() {
@@ -438,6 +466,7 @@ fn build_interactive_keyboard(
         
         let dyn_prov_inner = dyn_provider.clone();
         let kc_inner = key_colors.clone();
+        let mode_cb_inner = on_color_picked_mode_update.clone();
         
         btn.connect_clicked(move |btn_ref| {
             let current_mode = crate::keyboardrgb::get_active_keyboard_mode(detected_mode);
@@ -448,7 +477,9 @@ fn build_interactive_keyboard(
             let kc_local = kc_inner.clone();
             let dyn_local = dyn_prov_inner.clone();
             
+            let mode_cb_local = mode_cb_inner.clone();
             show_color_picker_popover(btn_ref, Rc::new(move |hex| {
+                mode_cb_local(current_mode);
                 match current_mode {
                     KeyboardMode::PerKey => {
                         if key_index < pk_local.borrow().len() {
@@ -918,7 +949,8 @@ pub fn build_page() -> (adw::PreferencesPage, Option<adw::PreferencesGroup>, Opt
     let (std_kb_grid, apply_anim, global_color_box_ref) = if detected_mode == KeyboardMode::DesktopRgb {
         crate::desktop_rgb_gui::build_desktop_rgb_card(zone_colors.clone())
     } else {
-        build_interactive_keyboard(detected_mode, zone_colors.clone(), per_key_colors.clone())
+        let mode_row_ref = Rc::new(RefCell::new(Some(mode_row.clone())));
+        build_interactive_keyboard(detected_mode, zone_colors.clone(), per_key_colors.clone(), mode_row_ref)
     };
     std_kb_group.add(&std_kb_grid);
     page.add(&std_kb_group);
