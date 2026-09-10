@@ -224,6 +224,28 @@ pub fn get_hardware_specs() -> HardwareSpecs {
                 gpu_str = parts[0].trim().to_string();
             }
         }
+        if gpu_str == "Unknown GPU" {
+            if let Ok(output) = Command::new("lspci").output() {
+                let out_str = String::from_utf8_lossy(&output.stdout);
+                for line in out_str.lines() {
+                    if (line.contains("VGA compatible controller") || line.contains("3D controller"))
+                        && (line.contains("NVIDIA") || line.contains("AMD") || line.contains("Intel"))
+                    {
+                        if line.contains("NVIDIA") || (gpu_str == "Unknown GPU" && (line.contains("AMD") || line.contains("Intel"))) {
+                            if let Some(pos) = line.find(": ") {
+                                let desc = &line[pos + 2..];
+                                let clean = if let Some(bracket_end) = desc.find("]: ") {
+                                    &desc[bracket_end + 3..]
+                                } else {
+                                    desc
+                                };
+                                gpu_str = clean.trim().to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
         specs.gpu_spec = gpu_str;
 
         // 4. RAM info
@@ -618,6 +640,26 @@ pub fn fetch_system_stats() -> SystemStats {
         }
     }
 
+    // Fallback to sysfs hwmon GPU paths if NVML did not yield metrics (e.g. open source drivers like nouveau/amdgpu)
+    if stats.gpu_temp == 0 {
+        if let Some(ref p) = paths.gpu_temp_path {
+            if let Ok(s) = fs::read_to_string(p) {
+                if let Ok(milli) = s.trim().parse::<f64>() {
+                    stats.gpu_temp = (milli / 1000.0) as i32;
+                }
+            }
+        }
+    }
+    if stats.gpu_pwr <= 0.0 {
+        if let Some(ref p) = paths.gpu_pwr_path {
+            if let Ok(s) = fs::read_to_string(p) {
+                if let Ok(micro) = s.trim().parse::<f64>() {
+                    stats.gpu_pwr = micro / 1_000_000.0;
+                }
+            }
+        }
+    }
+
     // Total System Power
     let mut real_pwr = false;
     if stats.cpu_pwr > 0.0 || stats.gpu_pwr > 0.0 {
@@ -807,16 +849,14 @@ impl SysMonInterface {
 
         // Try to load ec_sys with write_support so debugfs exposes the io node
         let _ = std::process::Command::new("modprobe")
-            .arg("-r")
-            .arg("ec_sys")
-            .output();
-        let _ = std::process::Command::new("modprobe")
             .args(["ec_sys", "write_support=1"])
             .output();
-        // Also ensure debugfs is mounted
-        let _ = std::process::Command::new("mount")
-            .args(["-t", "debugfs", "none", "/sys/kernel/debug"])
-            .output();
+        // Also ensure debugfs is mounted if not already present
+        if !std::path::Path::new("/sys/kernel/debug").exists() {
+            let _ = std::process::Command::new("mount")
+                .args(["-t", "debugfs", "none", "/sys/kernel/debug"])
+                .output();
+        }
 
         let debugfs_mounted = std::path::Path::new("/sys/kernel/debug").exists();
         let ec_path = "/sys/kernel/debug/ec/ec0/io";
