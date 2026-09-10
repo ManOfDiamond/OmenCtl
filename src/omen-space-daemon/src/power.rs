@@ -535,15 +535,30 @@ impl PowerService {
     // ── Intel RAPL power limits ────────────────────────────────────────────────
 
     async fn apply_rapl_limits(pl1: u32, pl2: u32) {
-        let rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw";
-        let rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw";
-        if sysfs_exists(rapl1) {
-            let _ = sysfs_write_async(rapl1, &(pl1 * 1_000_000).to_string()).await;
+        let specs = crate::sysmon::get_hardware_specs();
+        let is_amd = specs.cpu_spec.to_uppercase().contains("AMD");
+
+        if is_amd {
+            let mw1 = pl1 * 1000;
+            let mw2 = pl2 * 1000;
+            let _ = tokio::process::Command::new("ryzenadj")
+                .arg(format!("--stapm-limit={}", mw1))
+                .arg(format!("--slow-limit={}", mw1))
+                .arg(format!("--fast-limit={}", mw2))
+                .output()
+                .await;
+            info!("AMD RyzenAdj limits set: STAPM/Slow={}W Fast={}W", pl1, pl2);
+        } else {
+            let rapl1 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_power_limit_uw";
+            let rapl2 = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_1_power_limit_uw";
+            if sysfs_exists(rapl1) {
+                let _ = sysfs_write_async(rapl1, &(pl1 * 1_000_000).to_string()).await;
+            }
+            if sysfs_exists(rapl2) {
+                let _ = sysfs_write_async(rapl2, &(pl2 * 1_000_000).to_string()).await;
+            }
+            info!("Intel RAPL limits set: PL1={}W PL2={}W", pl1, pl2);
         }
-        if sysfs_exists(rapl2) {
-            let _ = sysfs_write_async(rapl2, &(pl2 * 1_000_000).to_string()).await;
-        }
-        info!("Intel RAPL limits set: PL1={}W PL2={}W", pl1, pl2);
     }
 }
 

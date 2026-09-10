@@ -11,7 +11,8 @@ use crate::i18n;
 
 fn is_cpu_locked(cpu: &str) -> bool {
     let cpu = cpu.to_uppercase();
-    if !cpu.contains("INTEL") { return false; } // AMD has its own page/logic, but just in case
+    if cpu.contains("AMD") { return false; } // AMD handled by ryzenadj in daemon
+    if !cpu.contains("INTEL") { return false; }
     
     // Check for 12, 13, 14th gen
     if cpu.contains("12") || cpu.contains("13") || cpu.contains("14") {
@@ -303,6 +304,10 @@ pub fn build_page() -> gtk::Box {
     let tcc_s_load = tcc_scale.clone();
     let badge_load = status_badge.clone();
     
+    let cache_row_clone = cache_row.clone();
+    let core_row_clone = core_row.clone();
+    let core_scale_range = core_scale.clone();
+    
     let warn_title_clone = warn_title.clone();
     let warn_desc_clone = warn_desc.clone();
     let volt_group_clone = volt_group.clone();
@@ -312,8 +317,10 @@ pub fn build_page() -> gtk::Box {
     glib::spawn_future_local(async move {
         // First check CPU lock
         let mut locked = false;
+        let mut is_amd = false;
         if let Ok(hw_json) = crate::daemon_client::get_hardware_specs_async().await {
             if let Ok(hw) = serde_json::from_str::<crate::daemon_client::HardwareSpecs>(&hw_json) {
+                is_amd = hw.cpu_spec.to_uppercase().contains("AMD");
                 if is_cpu_locked(&hw.cpu_spec) {
                     locked = true;
                     warn_title_clone.set_label(i18n::t("uv_unsupported_title"));
@@ -329,25 +336,61 @@ pub fn build_page() -> gtk::Box {
         }
 
         if let Ok(json) = crate::daemon_client::get_undervolt_state_async().await {
-            if !locked {
-                badge_load.set_label("MSR OK");
-                badge_load.set_css_classes(&["badge-ok"]);
-            }
             if let Ok(state) = serde_json::from_str::<serde_json::Value>(&json) {
+                // Determine if daemon thinks it's AMD (fallback)
+                if let Some(amd_flag) = state.get("is_amd").and_then(|v| v.as_bool()) {
+                    is_amd = amd_flag;
+                }
+
+                if is_amd {
+                    warn_title_clone.set_label("AMD Curve Optimizer & PBO");
+                    if let Some(w) = state.get("warning").and_then(|v| v.as_str()) {
+                        warn_desc_clone.set_label(w);
+                        badge_load.set_label("RyzenAdj Missing");
+                        badge_load.set_css_classes(&["badge-err"]);
+                    } else {
+                        warn_desc_clone.set_label("RyzenAdj is managing Curve Optimizer and Power Limits.");
+                        badge_load.set_label("RyzenAdj OK");
+                        badge_load.set_css_classes(&["badge-ok"]);
+                    }
+                    core_scale_range.set_range(-30.0, 30.0);
+                    cache_row_clone.set_visible(false);
+                    core_row_clone.set_title("Curve Optimizer (All Core)");
+                    core_row_clone.set_subtitle("Negative values = Undervolt. Range: -30 to +30.");
+                } else if !locked {
+                    badge_load.set_label("MSR OK");
+                    badge_load.set_css_classes(&["badge-ok"]);
+                }
+
+                if let Some(core) = state.get("offsets").and_then(|v| v.get("core")).and_then(|v| v.as_f64()) {
+                    core_s_load.set_value(core);
+                }
+                // Also parse old state format just in case
                 if let Some(core) = state.get("core").and_then(|v| v.as_f64()) {
                     core_s_load.set_value(core);
+                }
+                
+                if let Some(cache) = state.get("offsets").and_then(|v| v.get("cache")).and_then(|v| v.as_f64()) {
+                    cache_s_load.set_value(cache);
                 }
                 if let Some(cache) = state.get("cache").and_then(|v| v.as_f64()) {
                     cache_s_load.set_value(cache);
                 }
-                if let Some(pl1) = state.get("pl1").and_then(|v| v.as_f64()) {
-                    pl1_s_load.set_value(pl1);
-                }
-                if let Some(pl2) = state.get("pl2").and_then(|v| v.as_f64()) {
-                    pl2_s_load.set_value(pl2);
-                }
+
                 if let Some(tcc) = state.get("tcc_offset").and_then(|v| v.as_f64()) {
                     tcc_s_load.set_value(tcc);
+                }
+            }
+        }
+        
+        // Load Power Limits separately
+        if let Ok(json) = crate::daemon_client::get_power_profile_async().await {
+            if let Ok(state) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Some(pl1) = state.get("pl1_w").and_then(|v| v.as_f64()) {
+                    pl1_s_load.set_value(pl1);
+                }
+                if let Some(pl2) = state.get("pl2_w").and_then(|v| v.as_f64()) {
+                    pl2_s_load.set_value(pl2);
                 }
             }
         }
