@@ -85,9 +85,11 @@ impl LinuxEcController {
         }
 
         let debugfs_base = "/sys/kernel/debug";
-        let _ = Command::new("mount")
-            .args(&["-t", "debugfs", "none", debugfs_base])
-            .output();
+        if !Path::new(debugfs_base).exists() {
+            let _ = Command::new("mount")
+                .args(&["-t", "debugfs", "none", debugfs_base])
+                .output();
+        }
 
         let _ = Command::new("modprobe")
             .args(&["ec_sys", "write_support=1"])

@@ -244,10 +244,10 @@ do_install() {
     rm -f /usr/bin/omen-gui
     cp "${gui_bin:-target/release/omen-gui}" /usr/bin/
 
-    cp data/org.hp.omen.conf /etc/dbus-1/system.d/
-    cp data/omen-space-daemon.service /etc/systemd/system/
-    cp data/sysusers.d/omen-space.conf /usr/lib/sysusers.d/
-    cp data/99-omen-space.rules /usr/lib/udev/rules.d/
+    install -m 644 data/org.hp.omen.conf /etc/dbus-1/system.d/
+    install -m 644 data/omen-space-daemon.service /etc/systemd/system/
+    install -m 644 data/sysusers.d/omen-space.conf /usr/lib/sysusers.d/
+    install -m 644 data/99-omen-space.rules /usr/lib/udev/rules.d/
     rm -f /usr/share/applications/omen-space.desktop /usr/share/applications/org.hp.OmenSpace.desktop
     cp data/org.hp.OmenSpace.desktop /usr/share/applications/
     cp data/org.hp.OmenSpace.service /usr/share/dbus-1/services/

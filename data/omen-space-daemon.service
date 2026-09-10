@@ -25,7 +25,7 @@ ProtectKernelModules=false
 ProtectControlGroups=true
 RestrictNamespaces=true
 MemoryDenyWriteExecute=true
-SystemCallFilter=@system-service
+SystemCallFilter=@system-service @module @mount
 
 # Allow /sys writes for unprivileged fan/power control via udev rules
 ProtectKernelTunables=no
